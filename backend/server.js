@@ -18,15 +18,19 @@ const db = require('./db');
 
 const app = express();
 const port = process.env.PORT || 4000;
-const configuredOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+const isProd = process.env.NODE_ENV === 'production';
+const defaultOriginList = isProd ? '' : 'http://localhost:5173';
+const configuredOrigins = (process.env.CLIENT_ORIGIN || defaultOriginList)
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
-const isProd = process.env.NODE_ENV === 'production';
 const allowVercelPreviews = process.env.ALLOW_VERCEL_PREVIEWS === 'true';
 
 const isOriginAllowed = (origin) => {
   if (!origin) {
+    return true;
+  }
+  if (!configuredOrigins.length) {
     return true;
   }
   if (configuredOrigins.includes(origin)) {
@@ -140,10 +144,18 @@ const updatePublicStats = async () => {
   );
 };
 
-app.listen(port, () => {
-  console.log(`API running on http://localhost:${port}`);
-  updatePublicStats().catch((err) => console.error('Failed to update public stats', err));
-  setInterval(() => {
+const startServer = () => {
+  app.listen(port, () => {
+    console.log(`API running on http://localhost:${port}`);
     updatePublicStats().catch((err) => console.error('Failed to update public stats', err));
-  }, WEEK_MS);
-});
+    setInterval(() => {
+      updatePublicStats().catch((err) => console.error('Failed to update public stats', err));
+    }, WEEK_MS);
+  });
+};
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = app;
