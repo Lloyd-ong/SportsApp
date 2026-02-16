@@ -15,7 +15,7 @@ router.get('/communities', async (req, res) => {
       params.push(userEmail);
     }
     const inviteSelect = userId && userEmail
-      ? ', (SELECT ci.id FROM community_invites ci WHERE ci.community_id = communities.id AND ci.email = ? AND ci.status = "pending" LIMIT 1) AS invite_id'
+      ? ", (SELECT ci.id FROM community_invites ci WHERE ci.community_id = communities.id AND ci.email = ? AND ci.status = 'pending' LIMIT 1) AS invite_id"
       : ', NULL AS invite_id';
     const [rows] = await db.execute(
       `SELECT
@@ -32,9 +32,9 @@ router.get('/communities', async (req, res) => {
         users.name AS creator_name,
         users.privacy_contact AS creator_privacy_contact,
         (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = communities.id) AS member_count,
-        ${userId ? 'EXISTS (SELECT 1 FROM community_members cm2 WHERE cm2.community_id = communities.id AND cm2.user_id = ? AND cm2.status = \"approved\") AS is_member' : '0 AS is_member'},
-        ${userId ? 'EXISTS (SELECT 1 FROM community_members cm3 WHERE cm3.community_id = communities.id AND cm3.user_id = ? AND cm3.role = \"owner\") AS is_owner' : '0 AS is_owner'},
-        ${userId ? 'COALESCE((SELECT cm4.status FROM community_members cm4 WHERE cm4.community_id = communities.id AND cm4.user_id = ? LIMIT 1), \"none\") AS membership_status' : '"none" AS membership_status'}
+        ${userId ? "EXISTS (SELECT 1 FROM community_members cm2 WHERE cm2.community_id = communities.id AND cm2.user_id = ? AND cm2.status = 'approved') AS is_member" : '0 AS is_member'},
+        ${userId ? "EXISTS (SELECT 1 FROM community_members cm3 WHERE cm3.community_id = communities.id AND cm3.user_id = ? AND cm3.role = 'owner') AS is_owner" : '0 AS is_owner'},
+        ${userId ? "COALESCE((SELECT cm4.status FROM community_members cm4 WHERE cm4.community_id = communities.id AND cm4.user_id = ? LIMIT 1), 'none') AS membership_status" : "'none' AS membership_status"}
         ${inviteSelect}
       FROM communities
       JOIN users ON users.id = communities.creator_id
@@ -60,14 +60,14 @@ router.get('/communities/:id', async (req, res) => {
     const userEmail = req.user ? req.user.email : null;
     const params = [];
     const isMemberSelect = userId
-      ? 'EXISTS (SELECT 1 FROM community_members cm2 WHERE cm2.community_id = communities.id AND cm2.user_id = ? AND cm2.status = "approved") AS is_member'
+      ? "EXISTS (SELECT 1 FROM community_members cm2 WHERE cm2.community_id = communities.id AND cm2.user_id = ? AND cm2.status = 'approved') AS is_member"
       : '0 AS is_member';
     const isOwnerSelect = userId
-      ? 'EXISTS (SELECT 1 FROM community_members cm3 WHERE cm3.community_id = communities.id AND cm3.user_id = ? AND cm3.role = "owner") AS is_owner'
+      ? "EXISTS (SELECT 1 FROM community_members cm3 WHERE cm3.community_id = communities.id AND cm3.user_id = ? AND cm3.role = 'owner') AS is_owner"
       : '0 AS is_owner';
     const statusSelect = userId
-      ? 'COALESCE((SELECT cm4.status FROM community_members cm4 WHERE cm4.community_id = communities.id AND cm4.user_id = ? LIMIT 1), "none") AS membership_status'
-      : '"none" AS membership_status';
+      ? "COALESCE((SELECT cm4.status FROM community_members cm4 WHERE cm4.community_id = communities.id AND cm4.user_id = ? LIMIT 1), 'none') AS membership_status"
+      : "'none' AS membership_status";
 
     if (userId) {
       params.push(userId, userId, userId);
@@ -79,7 +79,7 @@ router.get('/communities/:id', async (req, res) => {
     params.push(communityId);
 
     const inviteSelect = userId && userEmail
-      ? ', (SELECT ci.id FROM community_invites ci WHERE ci.community_id = communities.id AND ci.email = ? AND ci.status = "pending" LIMIT 1) AS invite_id'
+      ? ", (SELECT ci.id FROM community_invites ci WHERE ci.community_id = communities.id AND ci.email = ? AND ci.status = 'pending' LIMIT 1) AS invite_id"
       : ', NULL AS invite_id';
 
     const [rows] = await db.execute(
@@ -142,7 +142,8 @@ router.post('/communities', requireAuth, async (req, res) => {
 
     const [result] = await db.execute(
       `INSERT INTO communities (creator_id, name, description, sport, region, image_url, max_members, visibility)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING id`,
       [
         req.user.id,
         name,
@@ -201,7 +202,7 @@ router.get('/communities/:id/messages', async (req, res) => {
 
     if (req.user) {
       const [members] = await db.execute(
-        'SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ? AND status = "approved" LIMIT 1',
+        "SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ? AND status = 'approved' LIMIT 1",
         [communityId, req.user.id]
       );
       if (!members.length) {
@@ -242,7 +243,7 @@ router.post('/communities/:id/messages', requireAuth, async (req, res) => {
     }
 
     const [members] = await db.execute(
-      'SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ? AND status = "approved" LIMIT 1',
+      "SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ? AND status = 'approved' LIMIT 1",
       [communityId, req.user.id]
     );
     if (!members.length) {
@@ -302,7 +303,7 @@ router.post('/communities/:id/join', requireAuth, async (req, res) => {
     const autoApprove = visibility !== 'private' && visibility !== 'invite';
     if (visibility === 'invite') {
       const [invites] = await db.execute(
-        'SELECT id FROM community_invites WHERE community_id = ? AND email = ? AND status = "pending" LIMIT 1',
+        "SELECT id FROM community_invites WHERE community_id = ? AND email = ? AND status = 'pending' LIMIT 1",
         [communityId, req.user.email]
       );
       if (!invites.length) {
@@ -311,7 +312,7 @@ router.post('/communities/:id/join', requireAuth, async (req, res) => {
     }
     if (communities[0].max_members) {
       const [[countRow]] = await db.execute(
-        'SELECT COUNT(*) AS count FROM community_members WHERE community_id = ? AND status = "approved"',
+        "SELECT COUNT(*) AS count FROM community_members WHERE community_id = ? AND status = 'approved'",
         [communityId]
       );
       if (countRow.count >= communities[0].max_members) {
@@ -333,7 +334,7 @@ router.post('/communities/:id/join', requireAuth, async (req, res) => {
         ]
       );
     } catch (err) {
-      if (err.code === 'ER_DUP_ENTRY') {
+      if (err.code === 'ER_DUP_ENTRY' || err.code === '23505') {
         return res.status(200).json({ ok: true, alreadyMember: true });
       }
       throw err;
@@ -354,7 +355,7 @@ router.post('/communities/:id/invites', requireAuth, async (req, res) => {
     }
 
     const [owners] = await db.execute(
-      'SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ? AND role = "owner" LIMIT 1',
+      "SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ? AND role = 'owner' LIMIT 1",
       [communityId, req.user.id]
     );
     if (!owners.length) {
@@ -372,7 +373,10 @@ router.post('/communities/:id/invites', requireAuth, async (req, res) => {
     await db.execute(
       `INSERT INTO community_invites (community_id, email, invited_user_id, invited_by, status)
        VALUES (?, ?, ?, ?, 'pending')
-       ON DUPLICATE KEY UPDATE status = 'pending', invited_user_id = VALUES(invited_user_id)`,
+       ON CONFLICT (community_id, email)
+       DO UPDATE SET
+         status = 'pending',
+         invited_user_id = EXCLUDED.invited_user_id`,
       [communityId, email, invitedUserId, req.user.id]
     );
 
@@ -391,7 +395,7 @@ router.get('/communities/:id/invites', requireAuth, async (req, res) => {
     }
 
     const [owners] = await db.execute(
-      'SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ? AND role = "owner" LIMIT 1',
+      "SELECT 1 FROM community_members WHERE community_id = ? AND user_id = ? AND role = 'owner' LIMIT 1",
       [communityId, req.user.id]
     );
     if (!owners.length) {
@@ -421,7 +425,7 @@ router.post('/invites/:id/accept', requireAuth, async (req, res) => {
     }
 
     const [invites] = await db.execute(
-      'SELECT id, community_id, email FROM community_invites WHERE id = ? AND status = "pending" LIMIT 1',
+      "SELECT id, community_id, email FROM community_invites WHERE id = ? AND status = 'pending' LIMIT 1",
       [inviteId]
     );
     if (!invites.length) {
@@ -433,14 +437,15 @@ router.post('/invites/:id/accept', requireAuth, async (req, res) => {
     }
 
     await db.execute(
-      'UPDATE community_invites SET status = "accepted", invited_user_id = ? WHERE id = ?',
+      "UPDATE community_invites SET status = 'accepted', invited_user_id = ? WHERE id = ?",
       [req.user.id, inviteId]
     );
 
     await db.execute(
       `INSERT INTO community_members (community_id, user_id, role, status, approved_by, approved_at)
        VALUES (?, ?, 'member', 'approved', ?, NOW())
-       ON DUPLICATE KEY UPDATE status = 'approved'`,
+       ON CONFLICT (community_id, user_id)
+       DO UPDATE SET status = 'approved'`,
       [invites[0].community_id, req.user.id, req.user.id]
     );
 
@@ -459,7 +464,7 @@ router.post('/invites/:id/decline', requireAuth, async (req, res) => {
     }
 
     const [invites] = await db.execute(
-      'SELECT id, email FROM community_invites WHERE id = ? AND status = "pending" LIMIT 1',
+      "SELECT id, email FROM community_invites WHERE id = ? AND status = 'pending' LIMIT 1",
       [inviteId]
     );
     if (!invites.length) {
@@ -470,7 +475,7 @@ router.post('/invites/:id/decline', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Invite does not match your account' });
     }
 
-    await db.execute('UPDATE community_invites SET status = "declined" WHERE id = ?', [inviteId]);
+    await db.execute("UPDATE community_invites SET status = 'declined' WHERE id = ?", [inviteId]);
     return res.json({ ok: true });
   } catch (err) {
     console.error('Failed to decline invite', err);

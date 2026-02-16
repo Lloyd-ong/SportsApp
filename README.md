@@ -1,6 +1,6 @@
 # MatchDay Sports Networking (MVP)
 
-Meetup-inspired sports networking app using React (Vite), Node/Express, and MySQL.
+Meetup-inspired sports networking app using React (Vite), Node/Express, and PostgreSQL (Supabase compatible).
 
 ## Features
 - Google OAuth sign-in
@@ -12,13 +12,22 @@ Meetup-inspired sports networking app using React (Vite), Node/Express, and MySQ
 ## Project structure
 - `backend/` Node/Express REST API
 - `frontend/` React + Vite UI
-- `backend/sql/schema.sql` MySQL schema
+- `backend/sql/schema.postgres.sql` PostgreSQL schema
+- `backend/sql/schema.sql` legacy MySQL schema
 
 ## Setup
 
-### 1) Database (phpMyAdmin/MySQL)
-1. Create a database named `sports_networking` (or update the `.env`).
-2. Run the schema in `backend/sql/schema.sql`.
+### 1) Database (Supabase/Postgres)
+1. Create a Supabase project and get your Postgres connection details.
+2. In Supabase SQL Editor, run `backend/sql/schema.postgres.sql`.
+3. Configure backend DB env vars:
+   - `DB_HOST`
+   - `DB_PORT` (usually `5432`)
+   - `DB_USER` (usually `postgres`)
+   - `DB_PASSWORD`
+   - `DB_NAME` (usually `postgres`)
+   - `DB_SSL=true`
+   - `DB_SSL_REJECT_UNAUTHORIZED=false`
 
 ### 2) Backend
 ```
@@ -48,7 +57,7 @@ If OAuth is not configured, the login button is disabled but the app still runs.
 
 ## Roles
 - New users default to `user`. Roles supported: `user`, `admin`, `superadmin`.
-- If you already created the schema, add the role column:
+- If you are migrating from an older schema, ensure these columns exist:
 
 ```sql
 ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user';

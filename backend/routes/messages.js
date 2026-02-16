@@ -79,7 +79,7 @@ router.post('/messages', requireAuth, async (req, res) => {
     }
 
     const [result] = await db.execute(
-      'INSERT INTO private_messages (sender_id, recipient_id, message) VALUES (?, ?, ?)',
+      'INSERT INTO private_messages (sender_id, recipient_id, message) VALUES (?, ?, ?) RETURNING id',
       [req.user.id, recipientId, message]
     );
 

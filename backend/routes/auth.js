@@ -75,14 +75,14 @@ function initAuth() {
                 );
               } else {
                 const [result] = await db.execute(
-                  'INSERT INTO users (google_id, name, email, avatar_url) VALUES (?, ?, ?, ?)',
+                  'INSERT INTO users (google_id, name, email, avatar_url) VALUES (?, ?, ?, ?) RETURNING id',
                   [googleId, name, email, avatar]
                 );
                 userId = result.insertId;
               }
             } else {
               const [result] = await db.execute(
-                'INSERT INTO users (google_id, name, email, avatar_url) VALUES (?, ?, ?, ?)',
+                'INSERT INTO users (google_id, name, email, avatar_url) VALUES (?, ?, ?, ?) RETURNING id',
                 [googleId, name, email, avatar]
               );
               userId = result.insertId;
@@ -128,9 +128,7 @@ router.post('/register', async (req, res, next) => {
   try {
     const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
     const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-    const currentPassword = typeof req.body.current_password === 'string' ? req.body.current_password : '';
-    const newPassword = typeof req.body.new_password === 'string' ? req.body.new_password : '';
-    const confirmPassword = typeof req.body.confirm_password === 'string' ? req.body.confirm_password : '';
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -150,7 +148,7 @@ router.post('/register', async (req, res, next) => {
     const rounds = Number.isInteger(saltRounds) && saltRounds > 0 ? saltRounds : 10;
     const passwordHash = await bcrypt.hash(`${password}${pepper}`, rounds);
     const [result] = await db.execute(
-      'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
+      'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?) RETURNING id',
       [name, email, passwordHash]
     );
 

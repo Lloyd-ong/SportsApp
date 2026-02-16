@@ -249,7 +249,8 @@ router.post('/events', requireAuth, async (req, res) => {
     const [result] = await db.execute(
       `INSERT INTO events
         (creator_id, title, description, sport, location, image_url, start_time, end_time, capacity)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING id` ,
       [
         req.user.id,
         title,
@@ -328,7 +329,7 @@ router.post('/events/:id/rsvp', requireAuth, async (req, res) => {
         [req.user.id, eventId]
       );
     } catch (err) {
-      if (err.code === 'ER_DUP_ENTRY') {
+      if (err.code === 'ER_DUP_ENTRY' || err.code === '23505') {
         return res.status(409).json({ error: "Already RSVP'd" });
       }
       throw err;

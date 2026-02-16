@@ -123,8 +123,8 @@ const updatePublicStats = async () => {
   const [[eventCount]] = await db.execute(
     `SELECT COUNT(*) AS count
      FROM events
-     WHERE start_time >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
-       AND start_time < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`
+     WHERE start_time >= date_trunc('month', CURRENT_DATE)
+       AND start_time < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'`
   );
   const [[sportCount]] = await db.execute(
     `SELECT COUNT(DISTINCT sport) AS count
@@ -139,7 +139,12 @@ const updatePublicStats = async () => {
   await db.execute(
     `INSERT INTO public_stats (id, users, events, sports)
      VALUES (1, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE users = VALUES(users), events = VALUES(events), sports = VALUES(sports), updated_at = CURRENT_TIMESTAMP`,
+     ON CONFLICT (id)
+     DO UPDATE SET
+       users = EXCLUDED.users,
+       events = EXCLUDED.events,
+       sports = EXCLUDED.sports,
+       updated_at = CURRENT_TIMESTAMP`,
     [userCount.count, eventCount.count, sportCount.count]
   );
 };
