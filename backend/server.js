@@ -18,8 +18,30 @@ const db = require('./db');
 
 const app = express();
 const port = process.env.PORT || 4000;
-const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const configuredOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const isProd = process.env.NODE_ENV === 'production';
+const allowVercelPreviews = process.env.ALLOW_VERCEL_PREVIEWS === 'true';
+
+const isOriginAllowed = (origin) => {
+  if (!origin) {
+    return true;
+  }
+  if (configuredOrigins.includes(origin)) {
+    return true;
+  }
+  if (!allowVercelPreviews) {
+    return false;
+  }
+  try {
+    const { hostname, protocol } = new URL(origin);
+    return protocol === 'https:' && hostname.endsWith('.vercel.app');
+  } catch (err) {
+    return false;
+  }
+};
 
 if (isProd) {
   app.set('trust proxy', 1);
@@ -27,7 +49,12 @@ if (isProd) {
 
 app.use(
   cors({
-    origin: clientOrigin,
+    origin(origin, callback) {
+      if (isOriginAllowed(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true
   })
 );
