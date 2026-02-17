@@ -297,7 +297,11 @@ router.post('/events', requireAuth, async (req, res) => {
     return res.status(201).json({ event: rows[0] });
   } catch (err) {
     console.error('Failed to create event', err);
-    return res.status(500).json({ error: 'Failed to create event' });
+    return res.status(500).json({
+      error: 'Failed to create event',
+      detail: err.message,
+      code: err.code || null
+    });
   }
 });
 
