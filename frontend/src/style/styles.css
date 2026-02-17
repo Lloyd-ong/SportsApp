@@ -919,7 +919,7 @@ body:has(.auth-modal__backdrop) .footer {
 }
 
 .section--reset {
-  max-width: 560px;
+  max-width: 420px;
 }
 
 .section--reset .section__header {
@@ -929,8 +929,13 @@ body:has(.auth-modal__backdrop) .footer {
 
 .reset-form {
   width: 100%;
-  max-width: 460px;
+  max-width: 360px;
   margin: 0 auto;
+}
+
+.reset-form .btn--primary {
+  min-width: 180px;
+  align-self: center;
 }
 
 .section--tabs {
