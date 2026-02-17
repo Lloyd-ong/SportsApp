@@ -24,7 +24,9 @@ function EventCard({ event, onToggleRsvp, canRsvp, index }) {
   const capacity = event.capacity || null;
   const spotsLeft = capacity ? Math.max(capacity - rsvpCount, 0) : null;
   const isGoing = Boolean(event.is_going);
-  const locationLabel = event.location ? event.location.replace(/\s*\([^)]*\)\s*$/, '') : '';
+  const locationLabel = event.location
+    ? event.location.replace(/\s*\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)\s*$/, '')
+    : '';
   const photoQuery = [locationLabel, event.title].filter(Boolean).join(' ').trim();
   const hasLocation = Boolean(locationLabel);
   const googleKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;

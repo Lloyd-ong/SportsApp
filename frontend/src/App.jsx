@@ -100,7 +100,10 @@ function App() {
   if (import.meta.env.DEV) {
     console.log('App mounted');
   }
-  const stripLocationLabel = (value) => (value ? value.replace(/\s*\([^)]*\)\s*$/, '') : '');
+  const stripLocationLabel = (value) =>
+    value
+      ? value.replace(/\s*\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)\s*$/, '')
+      : '';
   const buildMapImageUrl = (value) => {
     const label = stripLocationLabel(value);
     if (!label) {
@@ -1403,6 +1406,7 @@ function App() {
     const [imageUploadError, setImageUploadError] = useState('');
     const [imageUploading, setImageUploading] = useState(false);
     const [placePhoto, setPlacePhoto] = useState(null);
+    const [mapLoadFailed, setMapLoadFailed] = useState(false);
     const [editOpen, setEditOpen] = useState(false);
     const [editSaving, setEditSaving] = useState(false);
     const [editImageError, setEditImageError] = useState('');
@@ -1489,6 +1493,7 @@ function App() {
       if (!apiKey || !mapRef.current || !event) {
         return undefined;
       }
+      setMapLoadFailed(false);
       const label = stripLocationLabel(event.location);
       const center = parseLatLng(event.location || '');
       if (!label && !center) {
@@ -1498,8 +1503,11 @@ function App() {
       initGoogleMap(mapRef.current, apiKey, { center, locationLabel: label })
         .then((dispose) => {
           cleanup = dispose;
+          setMapLoadFailed(false);
         })
-        .catch(() => {});
+        .catch(() => {
+          setMapLoadFailed(true);
+        });
       return () => cleanup();
     }, [event]);
 
@@ -1586,11 +1594,6 @@ function App() {
 
     const buildLocationValue = (item) => {
       const label = item.BUILDING || item.SEARCHVAL || item.ADDRESS || 'Location';
-      const lat = item.LATITUDE || item.lat;
-      const lng = item.LONGITUDE || item.lng;
-      if (lat && lng) {
-        return `${label} (${lat}, ${lng})`;
-      }
       return label;
     };
 
@@ -1648,7 +1651,7 @@ function App() {
     };
 
     const handleEditImageChange = (eventField) => {
-      if (/\d+\.\d+\s*,\s*\d+\.\d+/.test(editForm.location)) {
+      if ((editForm.location || '').trim()) {
         return;
       }
       const file = eventField.target.files && eventField.target.files[0];
@@ -1705,20 +1708,16 @@ function App() {
       if (!event) {
         return;
       }
-      if (!/\d+\.\d+\s*,\s*\d+\.\d+/.test(editForm.location)) {
-        setEventError('Please select a location from the dropdown list.');
-        return;
-      }
       setEditSaving(true);
       setEventError('');
       try {
-        const hasCoords = /\d+\.\d+\s*,\s*\d+\.\d+/.test(editForm.location);
+        const hasLocation = Boolean((editForm.location || '').trim());
         const payload = {
           title: editForm.title.trim(),
           description: editForm.description.trim(),
           sport: editForm.sport.trim(),
           location: editForm.location.trim(),
-          image_url: hasCoords ? '' : editForm.image_url.trim(),
+          image_url: hasLocation ? '' : editForm.image_url.trim(),
           start_time: editForm.start_time,
           end_time: editForm.end_time,
           capacity: editForm.capacity
@@ -1773,8 +1772,11 @@ function App() {
     const paxLabel = capacity ? `${rsvpCount}/${capacity}` : `${rsvpCount}`;
     const locationLabel = stripLocationLabel(event.location) || event.title;
     const hasLocation = Boolean(stripLocationLabel(event.location));
-    const showMap = hasLocation && Boolean(import.meta.env.VITE_GOOGLE_MAPS_KEY);
+    const showMap = hasLocation && Boolean(import.meta.env.VITE_GOOGLE_MAPS_KEY) && !mapLoadFailed;
     const mapImageUrl = hasLocation ? buildMapImageUrl(event.location) : '';
+    const embedMapUrl = hasLocation
+      ? `https://www.google.com/maps?q=${encodeURIComponent(locationLabel)}&output=embed`
+      : '';
     const showStaticMap = !showMap && Boolean(mapImageUrl);
     const baseImage = event.image_url && !isStaticMapUrl(event.image_url) ? event.image_url : '';
     const placePhotoUrl = placePhoto?.url || '';
@@ -1784,8 +1786,8 @@ function App() {
     const isGoing = Boolean(event.is_going);
     const hostPrivacy = event.host_privacy_contact || 'members';
     const canMessageHost = Boolean(user && user.id !== event.host_id && hostPrivacy !== 'no_one');
-    const editHasCoords = /\d+\.\d+\s*,\s*\d+\.\d+/.test(editForm.location);
-    const editMapPreview = editHasCoords ? buildMapImageUrl(editForm.location) : '';
+    const editHasLocation = Boolean((editForm.location || '').trim());
+    const editMapPreview = editHasLocation ? buildMapImageUrl(editForm.location) : '';
 
     return (
       <section className="section event-detail">
@@ -1830,6 +1832,13 @@ function App() {
             <div className="event-detail__image event-detail__image--map">
               {showMap ? (
                 <div ref={mapRef} className="event-detail__map-frame" />
+              ) : embedMapUrl ? (
+                <iframe
+                  className="event-detail__map-frame"
+                  title={`${event.title} location map`}
+                  src={embedMapUrl}
+                  loading="lazy"
+                />
               ) : showStaticMap ? (
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationLabel)}`}
@@ -1880,7 +1889,7 @@ function App() {
           <div className="event-detail__grid">
             <div>
               <div className="event-card__label">Location</div>
-              <div>{event.location ? event.location.replace(/\s*\([^)]*\)\s*$/, '') : ''}</div>
+              <div>{stripLocationLabel(event.location)}</div>
             </div>
             <div>
               <div className="event-card__label">Pax</div>
@@ -2015,8 +2024,8 @@ function App() {
                 </label>
                 <div className="image-upload">
                   <span className="image-upload__label">Event image</span>
-                  <label className={`image-upload__box ${editHasCoords ? 'image-upload__box--disabled' : ''}`}>
-                    {editHasCoords ? (
+                  <label className={`image-upload__box ${editHasLocation ? 'image-upload__box--disabled' : ''}`}>
+                    {editHasLocation ? (
                       editMapPreview ? (
                         <img src={editMapPreview} alt="Event location preview" />
                       ) : (
@@ -2030,12 +2039,12 @@ function App() {
                     <input
                       type="file"
                       accept="image/*"
-                      disabled={editHasCoords}
+                      disabled={editHasLocation}
                       onChange={handleEditImageChange}
                     />
                   </label>
                   <div className="form-hint">
-                    {editHasCoords
+                    {editHasLocation
                       ? 'Image will be pulled from the selected location.'
                       : 'Upload a cover image if you do not have a location.'}
                   </div>

@@ -69,7 +69,10 @@ function EventForm({ onCreate, disabled }) {
     []
   );
 
-  const stripLocationLabel = (value) => (value ? value.replace(/\s*\([^)]*\)\s*$/, '') : '');
+  const stripLocationLabel = (value) =>
+    value
+      ? value.replace(/\s*\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)\s*$/, '')
+      : '';
   const buildMapImageUrl = (value) => {
     const label = stripLocationLabel(value);
     if (!label) {
@@ -84,11 +87,6 @@ function EventForm({ onCreate, disabled }) {
 
   const buildLocationValue = (item) => {
     const label = item.BUILDING || item.SEARCHVAL || item.ADDRESS || 'Location';
-    const lat = item.LATITUDE || item.lat;
-    const lng = item.LONGITUDE || item.lng;
-    if (lat && lng) {
-      return `${label} (${lat}, ${lng})`;
-    }
     return label;
   };
 
@@ -96,13 +94,9 @@ function EventForm({ onCreate, disabled }) {
     event.preventDefault();
     setError('');
 
-    const hasCoords = /\d+\.\d+\s*,\s*\d+\.\d+/.test(form.location);
+    const hasLocation = Boolean((form.location || '').trim());
     if (!form.title || !form.sport || !form.location || !form.start_time) {
       setError('Title, sport, location, and start time are required.');
-      return;
-    }
-    if (!hasCoords) {
-      setError('Please select a location from the dropdown list.');
       return;
     }
 
@@ -113,7 +107,7 @@ function EventForm({ onCreate, disabled }) {
         description: form.description,
         sport: form.sport,
         location: form.location,
-        image_url: hasCoords ? '' : form.image_url,
+        image_url: hasLocation ? '' : form.image_url,
         start_time: form.start_time,
         end_time: form.end_time,
         capacity: form.capacity
@@ -126,8 +120,8 @@ function EventForm({ onCreate, disabled }) {
     }
   };
 
-  const hasCoords = /\d+\.\d+\s*,\s*\d+\.\d+/.test(form.location);
-  const mapPreview = hasCoords ? buildMapImageUrl(form.location) : '';
+  const hasLocation = Boolean((form.location || '').trim());
+  const mapPreview = hasLocation ? buildMapImageUrl(form.location) : '';
 
   return (
     <form className="event-form" onSubmit={handleSubmit}>
@@ -165,8 +159,8 @@ function EventForm({ onCreate, disabled }) {
       </label>
       <div className="image-upload">
         <span className="image-upload__label">Event image</span>
-        <label className={`image-upload__box ${hasCoords ? 'image-upload__box--disabled' : ''}`}>
-          {hasCoords ? (
+        <label className={`image-upload__box ${hasLocation ? 'image-upload__box--disabled' : ''}`}>
+          {hasLocation ? (
             mapPreview ? (
               <img src={mapPreview} alt="Event location preview" />
             ) : (
@@ -180,7 +174,7 @@ function EventForm({ onCreate, disabled }) {
           <input
             type="file"
             accept="image/*"
-            disabled={disabled || saving || hasCoords}
+            disabled={disabled || saving || hasLocation}
             onChange={(event) => {
               const file = event.target.files && event.target.files[0];
               if (!file) {
@@ -203,7 +197,7 @@ function EventForm({ onCreate, disabled }) {
           />
         </label>
         <div className="form-hint">
-          {hasCoords
+          {hasLocation
             ? 'Image will be pulled from the selected location.'
             : 'Upload a cover image if you do not have a location.'}
         </div>
