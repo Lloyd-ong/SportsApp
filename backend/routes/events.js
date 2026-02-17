@@ -224,7 +224,8 @@ router.post('/events', requireAuth, async (req, res) => {
     const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
     const description = typeof req.body.description === 'string' ? req.body.description.trim() : '';
     const sport = typeof req.body.sport === 'string' ? req.body.sport.trim() : '';
-    const location = typeof req.body.location === 'string' ? req.body.location.trim() : '';
+    const rawLocation = typeof req.body.location === 'string' ? req.body.location.trim() : '';
+    const location = stripLocationLabel(rawLocation);
     let imageUrl = typeof req.body.image_url === 'string' ? req.body.image_url.trim() : '';
     const startTime = normalizeDateTime(req.body.start_time);
     const endTime = normalizeDateTime(req.body.end_time);
@@ -390,7 +391,9 @@ router.patch('/events/:id', requireAuth, async (req, res) => {
     const title = typeof req.body.title === 'string' ? req.body.title.trim() : events[0].title;
     const description = typeof req.body.description === 'string' ? req.body.description.trim() : events[0].description;
     const sport = typeof req.body.sport === 'string' ? req.body.sport.trim() : events[0].sport;
-    const location = typeof req.body.location === 'string' ? req.body.location.trim() : events[0].location;
+    const location = typeof req.body.location === 'string'
+      ? stripLocationLabel(req.body.location.trim())
+      : stripLocationLabel(events[0].location);
     let imageUrl = typeof req.body.image_url === 'string' ? req.body.image_url.trim() : events[0].image_url;
     const startTime = normalizeDateTime(req.body.start_time) || events[0].start_time;
     const endTime = normalizeDateTime(req.body.end_time) || events[0].end_time;

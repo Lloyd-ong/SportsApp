@@ -102,11 +102,12 @@ function EventForm({ onCreate, disabled }) {
 
     setSaving(true);
     try {
+      const cleanLocation = stripLocationLabel(form.location);
       await onCreate({
         title: form.title,
         description: form.description,
         sport: form.sport,
-        location: form.location,
+        location: cleanLocation,
         image_url: hasLocation ? '' : form.image_url,
         start_time: form.start_time,
         end_time: form.end_time,

@@ -1480,7 +1480,7 @@ function App() {
         title: event.title || '',
         description: event.description || '',
         sport: event.sport || '',
-        location: event.location || '',
+        location: stripLocationLabel(event.location || ''),
         image_url: event.image_url || '',
         start_time: formatDateTime(event.start_time),
         end_time: formatDateTime(event.end_time),
@@ -1527,19 +1527,23 @@ function App() {
         };
       }
       const locationLabel = stripLocationLabel(event.location);
-      const photoQuery = [locationLabel, event.title].filter(Boolean).join(' ').trim();
-      if (!photoQuery) {
+      if (!locationLabel) {
         setPlacePhoto(null);
         return () => {
           active = false;
         };
       }
       const googleKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
-      const primary = googleKey
-        ? getPlacePhotoUrl(photoQuery, googleKey, { maxWidth: 900 })
-        : Promise.resolve(null);
-      primary
-        .then((result) => result || getPlacePhotoFromBackend(photoQuery, { maxWidth: 900 }))
+      getPlacePhotoFromBackend(locationLabel, { maxWidth: 900 })
+        .then((result) => {
+          if (result) {
+            return result;
+          }
+          if (!googleKey) {
+            return null;
+          }
+          return getPlacePhotoUrl(locationLabel, googleKey, { maxWidth: 900 });
+        })
         .then((result) => {
           if (active) {
             setPlacePhoto(result || null);
@@ -1716,7 +1720,7 @@ function App() {
           title: editForm.title.trim(),
           description: editForm.description.trim(),
           sport: editForm.sport.trim(),
-          location: editForm.location.trim(),
+          location: stripLocationLabel(editForm.location.trim()),
           image_url: hasLocation ? '' : editForm.image_url.trim(),
           start_time: editForm.start_time,
           end_time: editForm.end_time,

@@ -27,7 +27,7 @@ function EventCard({ event, onToggleRsvp, canRsvp, index }) {
   const locationLabel = event.location
     ? event.location.replace(/\s*\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)\s*$/, '')
     : '';
-  const photoQuery = [locationLabel, event.title].filter(Boolean).join(' ').trim();
+  const photoQuery = locationLabel;
   const hasLocation = Boolean(locationLabel);
   const googleKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
   const isMapImage = isMapImageUrl(event.image_url || '');
@@ -46,11 +46,16 @@ function EventCard({ event, onToggleRsvp, canRsvp, index }) {
   useEffect(() => {
     let active = true;
     if ((!event.image_url || isMapImage) && photoQuery) {
-      const primary = googleKey
-        ? getPlacePhotoUrl(photoQuery, googleKey, { maxWidth: 640 })
-        : Promise.resolve(null);
-      primary
-        .then((result) => result || getPlacePhotoFromBackend(photoQuery, { maxWidth: 640 }))
+      getPlacePhotoFromBackend(photoQuery, { maxWidth: 640 })
+        .then((result) => {
+          if (result) {
+            return result;
+          }
+          if (!googleKey) {
+            return null;
+          }
+          return getPlacePhotoUrl(photoQuery, googleKey, { maxWidth: 640 });
+        })
         .then((result) => {
           if (active) {
             setPlacePhoto(result || null);
