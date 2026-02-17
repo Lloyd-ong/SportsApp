@@ -34,7 +34,9 @@ function EventCard({ event, onToggleRsvp, canRsvp, index }) {
   const [placePhoto, setPlacePhoto] = useState(null);
   const placePhotoUrl = placePhoto?.url || '';
   const attribution = placePhoto?.attribution || '';
-  const imageUrl = (!isMapImage ? event.image_url : '') || placePhotoUrl || '';
+  const primaryImageUrl = !isMapImage ? (event.image_url || '') : '';
+  const [baseImageFailed, setBaseImageFailed] = useState(false);
+  const imageUrl = (baseImageFailed ? '' : primaryImageUrl) || placePhotoUrl || '';
   const [imgSrc, setImgSrc] = useState(imageUrl);
   const hasImage = Boolean(imgSrc);
   const paxLabel = capacity ? `${rsvpCount}/${capacity}` : `${rsvpCount}`;
@@ -44,8 +46,12 @@ function EventCard({ event, onToggleRsvp, canRsvp, index }) {
   }, [imageUrl]);
 
   useEffect(() => {
+    setBaseImageFailed(false);
+  }, [primaryImageUrl, event.id]);
+
+  useEffect(() => {
     let active = true;
-    if ((!event.image_url || isMapImage) && photoQuery) {
+    if (photoQuery) {
       getPlacePhotoFromBackend(photoQuery, { maxWidth: 640 })
         .then((result) => {
           if (result) {
@@ -72,9 +78,13 @@ function EventCard({ event, onToggleRsvp, canRsvp, index }) {
     return () => {
       active = false;
     };
-  }, [event.image_url, isMapImage, photoQuery, googleKey]);
+  }, [photoQuery, googleKey]);
 
   const handleImageError = () => {
+    if (!baseImageFailed && primaryImageUrl && imgSrc === primaryImageUrl) {
+      setBaseImageFailed(true);
+      return;
+    }
     setImgSrc('');
   };
 

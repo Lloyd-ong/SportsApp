@@ -1406,6 +1406,7 @@ function App() {
     const [imageUploadError, setImageUploadError] = useState('');
     const [imageUploading, setImageUploading] = useState(false);
     const [placePhoto, setPlacePhoto] = useState(null);
+    const [baseImageFailed, setBaseImageFailed] = useState(false);
     const [mapLoadFailed, setMapLoadFailed] = useState(false);
     const [editOpen, setEditOpen] = useState(false);
     const [editSaving, setEditSaving] = useState(false);
@@ -1489,6 +1490,10 @@ function App() {
     }, [event]);
 
     useEffect(() => {
+      setBaseImageFailed(false);
+    }, [event?.id, event?.image_url]);
+
+    useEffect(() => {
       const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
       if (!apiKey || !mapRef.current || !event) {
         return undefined;
@@ -1514,13 +1519,6 @@ function App() {
     useEffect(() => {
       let active = true;
       if (!event) {
-        setPlacePhoto(null);
-        return () => {
-          active = false;
-        };
-      }
-      const baseImage = event.image_url && !isStaticMapUrl(event.image_url) ? event.image_url : '';
-      if (baseImage) {
         setPlacePhoto(null);
         return () => {
           active = false;
@@ -1785,7 +1783,7 @@ function App() {
     const baseImage = event.image_url && !isStaticMapUrl(event.image_url) ? event.image_url : '';
     const placePhotoUrl = placePhoto?.url || '';
     const attribution = placePhoto?.attribution || '';
-    const leftImageUrl = baseImage || placePhotoUrl || '';
+    const leftImageUrl = (baseImageFailed ? '' : baseImage) || placePhotoUrl || '';
     const isHost = user && user.id === event.host_id;
     const isGoing = Boolean(event.is_going);
     const hostPrivacy = event.host_privacy_contact || 'members';
@@ -1804,7 +1802,17 @@ function App() {
           <div className="event-detail__media">
             <div className="event-detail__image event-detail__image--upload">
               {leftImageUrl ? (
-                <img src={leftImageUrl} alt={`${event.title} cover`} />
+                <img
+                  src={leftImageUrl}
+                  alt={`${event.title} cover`}
+                  onError={() => {
+                    if (!baseImageFailed && baseImage && leftImageUrl === baseImage) {
+                      setBaseImageFailed(true);
+                      return;
+                    }
+                    setPlacePhoto(null);
+                  }}
+                />
               ) : (
                 <div className="event-detail__image-placeholder">
                   <span>{event.sport || 'Event image'}</span>
