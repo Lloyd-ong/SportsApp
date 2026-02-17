@@ -50,17 +50,17 @@ function buildListQuery(filters, userId) {
   }
   if (q) {
     const like = `%${q}%`;
-    whereClauses.push('(events.title LIKE ? OR events.sport LIKE ? OR events.location LIKE ?)');
+    whereClauses.push('(events.title ILIKE ? OR events.sport ILIKE ? OR events.location ILIKE ?)');
     params.push(like, like, like);
   }
   if (sport) {
     const like = `%${sport}%`;
-    whereClauses.push('events.sport LIKE ?');
+    whereClauses.push('events.sport ILIKE ?');
     params.push(like);
   }
   if (region) {
     const like = `%${region}%`;
-    whereClauses.push('events.location LIKE ?');
+    whereClauses.push('events.location ILIKE ?');
     params.push(like);
   }
   if (startDate) {
