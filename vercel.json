@@ -31,7 +31,17 @@
       "dest": "backend/server.js"
     },
     {
+      "src": "/(.*\\..*)",
+      "dest": "/frontend/$1",
+      "check": true
+    },
+    {
       "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/index.html",
+      "check": true
     },
     {
       "src": "/(.*)",
