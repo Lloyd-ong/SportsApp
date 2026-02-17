@@ -162,7 +162,11 @@ router.get('/events', async (req, res) => {
     res.json({ events: rows });
   } catch (err) {
     console.error('Failed to load events', err);
-    res.status(500).json({ error: 'Failed to load events' });
+    res.status(500).json({
+      error: 'Failed to load events',
+      detail: err.message,
+      code: err.code || null
+    });
   }
 });
 

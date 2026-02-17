@@ -1314,7 +1314,7 @@ function App() {
     };
 
     return (
-      <section className="section">
+      <section className="section section--reset">
         <div className="section__header">
           <div>
             <h2>Reset password</h2>
@@ -1323,7 +1323,7 @@ function App() {
         </div>
 
         {!token ? (
-          <form className="event-form" onSubmit={handleRequest}>
+          <form className="event-form reset-form" onSubmit={handleRequest}>
             <label>
               Email
               <input
@@ -1349,7 +1349,7 @@ function App() {
             </button>
           </form>
         ) : (
-          <form className="event-form" onSubmit={handleSubmit}>
+          <form className="event-form reset-form" onSubmit={handleSubmit}>
             <label>
               New password
               <input

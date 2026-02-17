@@ -4,6 +4,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const db = require('../db');
+const { isResetMailerConfigured, sendPasswordResetEmail } = require('../utils/mailer');
 
 const router = express.Router();
 let googleEnabled = false;
@@ -348,6 +349,12 @@ router.patch('/me', async (req, res) => {
 
 router.post('/forgot', async (req, res) => {
   try {
+    const isProd = process.env.NODE_ENV === 'production';
+    const hasMailer = isResetMailerConfigured();
+    if (isProd && !hasMailer) {
+      return res.status(503).json({ error: 'Password reset email service is not configured' });
+    }
+
     const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
@@ -370,12 +377,17 @@ router.post('/forgot', async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || req.headers.origin || 'http://localhost:5173';
     const resetLink = `${frontendUrl}/reset?token=${token}`;
 
-    if (process.env.NODE_ENV !== 'production') {
-      return res.json({ ok: true, resetLink });
+    if (hasMailer) {
+      await sendPasswordResetEmail({ to: email, resetLink });
+    }
+
+    if (!isProd) {
+      return res.json({ ok: true, resetLink, emailSent: hasMailer });
     }
 
     return res.json({ ok: true });
   } catch (err) {
+    console.error('Failed to start password reset', err);
     return res.status(500).json({ error: 'Failed to start password reset' });
   }
 });

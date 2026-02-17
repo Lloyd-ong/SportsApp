@@ -918,6 +918,21 @@ body:has(.auth-modal__backdrop) .footer {
   width: 100%;
 }
 
+.section--reset {
+  max-width: 560px;
+}
+
+.section--reset .section__header {
+  justify-content: center;
+  text-align: center;
+}
+
+.reset-form {
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
+}
+
 .section--tabs {
   padding-bottom: 0;
 }
