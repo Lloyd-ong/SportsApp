@@ -5,9 +5,19 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const db = require('../db');
 const { isResetMailerConfigured, sendPasswordResetEmail } = require('../utils/mailer');
+const {
+  TOKEN_COOKIE_NAME,
+  createAuthToken,
+  getAuthCookieOptions
+} = require('../utils/authToken');
 
 const router = express.Router();
 let googleEnabled = false;
+
+const setAuthCookie = (res, userId) => {
+  const token = createAuthToken(userId);
+  res.cookie(TOKEN_COOKIE_NAME, token, getAuthCookieOptions());
+};
 
 function initAuth() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -117,12 +127,20 @@ router.get('/google/callback', (req, res, next) => {
     return res.status(501).json({ error: 'Google OAuth is not configured' });
   }
   const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
-  return passport.authenticate('google', {
-    failureRedirect: `${clientOrigin}/?auth=failed`,
-    session: true
-  })(req, res, () => {
-    res.redirect(clientOrigin);
-  });
+  return passport.authenticate(
+    'google',
+    {
+      failureRedirect: `${clientOrigin}/?auth=failed`,
+      session: false
+    },
+    (err, user) => {
+      if (err || !user) {
+        return res.redirect(`${clientOrigin}/?auth=failed`);
+      }
+      setAuthCookie(res, user.id);
+      return res.redirect(clientOrigin);
+    }
+  )(req, res, next);
 });
 
 router.post('/register', async (req, res, next) => {
@@ -159,12 +177,8 @@ router.post('/register', async (req, res, next) => {
     );
     const user = userRows[0];
 
-    return req.login(user, (err) => {
-      if (err) {
-        return next(err);
-      }
-      return res.status(201).json({ user });
-    });
+    setAuthCookie(res, user.id);
+    return res.status(201).json({ user });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to register' });
   }
@@ -226,12 +240,8 @@ router.post('/login', async (req, res, next) => {
       role: rows[0].role
     };
 
-    return req.login(user, (err) => {
-      if (err) {
-        return next(err);
-      }
-      return res.json({ user });
-    });
+    setAuthCookie(res, user.id);
+    return res.json({ user });
   } catch (err) {
     console.error('Login error', err);
     return res.status(500).json({ error: 'Failed to sign in' });
@@ -442,16 +452,31 @@ router.post('/reset', async (req, res) => {
   }
 });
 
-router.post('/logout', (req, res, next) => {
-  req.logout((err) => {
-    if (err) {
-      return next(err);
+router.post('/logout', (req, res) => {
+  const clearAndRespond = () => {
+    res.clearCookie('connect.sid', { path: '/' });
+    res.clearCookie(TOKEN_COOKIE_NAME, { path: '/' });
+    res.json({ ok: true });
+  };
+
+  const destroySession = () => {
+    if (req.session && typeof req.session.destroy === 'function') {
+      req.session.destroy(() => {
+        clearAndRespond();
+      });
+      return;
     }
-    req.session.destroy(() => {
-      res.clearCookie('connect.sid');
-      res.json({ ok: true });
+    clearAndRespond();
+  };
+
+  if (typeof req.logout === 'function') {
+    req.logout(() => {
+      destroySession();
     });
-  });
+    return;
+  }
+
+  destroySession();
 });
 
 module.exports = { router, initAuth };

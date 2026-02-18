@@ -14,6 +14,7 @@ const communityRouter = require('./routes/community');
 const onemapRouter = require('./routes/onemap');
 const placesRouter = require('./routes/places');
 const messagesRouter = require('./routes/messages');
+const optionalAuth = require('./middleware/optionalAuth');
 const db = require('./db');
 
 const app = express();
@@ -82,6 +83,7 @@ app.use(
 initAuth();
 app.use(passport.initialize());
 app.use(passport.session());
+app.use(optionalAuth);
 
 app.get('/health', (req, res) => {
   res.json({ ok: true });
