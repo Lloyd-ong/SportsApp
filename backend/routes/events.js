@@ -269,6 +269,11 @@ router.post('/events', requireAuth, async (req, res) => {
       ]
     );
 
+    await db.execute(
+      "INSERT INTO rsvps (user_id, event_id, status) VALUES (?, ?, 'going') ON CONFLICT (user_id, event_id) DO UPDATE SET status = 'going'",
+      [req.user.id, result.insertId]
+    );
+
     const [rows] = await db.execute(
       `SELECT
         events.id,

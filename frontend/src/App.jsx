@@ -2100,32 +2100,41 @@ function App() {
               {memberError ? <div className="alert alert--error">{memberError}</div> : null}
               {members.length ? (
                 <div className="moderation__list">
-                  {members.map((member) => (
-                    <div className="moderation__item" key={member.user_id}>
-                      <div>
-                        <div className="moderation__name">{member.user_name}</div>
-                        <div className="moderation__meta">{member.user_email}</div>
+                  {members.map((member) => {
+                    const isCreatorMember = Number(member.user_id) === Number(event.host_id);
+                    return (
+                      <div className="moderation__item" key={member.user_id}>
+                        <div>
+                          <div className="moderation__name">{member.user_name}</div>
+                          <div className="moderation__meta">{member.user_email}</div>
+                        </div>
+                        <div className="moderation__actions">
+                          {isCreatorMember ? (
+                            <span className="pill">Creator</span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--small"
+                                onClick={() => handleEventMemberAction(member.user_id, 'kick')}
+                                disabled={memberActionKey === `kick-${member.user_id}`}
+                              >
+                                {memberActionKey === `kick-${member.user_id}` ? 'Kicking...' : 'Kick'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--danger btn--small"
+                                onClick={() => handleEventMemberAction(member.user_id, 'ban')}
+                                disabled={memberActionKey === `ban-${member.user_id}`}
+                              >
+                                {memberActionKey === `ban-${member.user_id}` ? 'Banning...' : 'Ban'}
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className="moderation__actions">
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--small"
-                          onClick={() => handleEventMemberAction(member.user_id, 'kick')}
-                          disabled={memberActionKey === `kick-${member.user_id}`}
-                        >
-                          {memberActionKey === `kick-${member.user_id}` ? 'Kicking...' : 'Kick'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--danger btn--small"
-                          onClick={() => handleEventMemberAction(member.user_id, 'ban')}
-                          disabled={memberActionKey === `ban-${member.user_id}`}
-                        >
-                          {memberActionKey === `ban-${member.user_id}` ? 'Banning...' : 'Ban'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="chat__empty">No attendees to manage.</div>
@@ -2959,7 +2968,8 @@ function App() {
               {members.length ? (
                 <div className="moderation__list">
                   {members.map((member) => {
-                    const isOwnerMember = member.role === 'owner';
+                    const isCreatorMember =
+                      Number(member.user_id) === Number(community.creator_id) || member.role === 'owner';
                     return (
                       <div className="moderation__item" key={member.user_id}>
                         <div>
@@ -2969,7 +2979,7 @@ function App() {
                           </div>
                         </div>
                         <div className="moderation__actions">
-                          {isOwnerMember ? (
+                          {isCreatorMember ? (
                             <span className="pill">Creator</span>
                           ) : (
                             <>
