@@ -31,12 +31,16 @@ import {
   updateProfile,
   updateUserRole,
   getCommunity,
+  getCommunityMembers,
   joinCommunity,
   leaveCommunity,
   getCommunityMessages,
   postCommunityMessage,
   updateCommunity,
   getCommunityRequests,
+  kickCommunityMember,
+  banCommunityMember,
+  updateCommunityMemberRole,
   approveCommunityRequest,
   rejectCommunityRequest,
   inviteCommunityMember,
@@ -44,7 +48,13 @@ import {
   acceptCommunityInvite,
   declineCommunityInvite
 } from './api.js';
-import { getEventMessages, postEventMessage } from './api.js';
+import {
+  getEventMessages,
+  postEventMessage,
+  getEventMembers,
+  kickEventMember,
+  banEventMember
+} from './api.js';
 import { getOneMapStaticMapUrl, parseLatLng } from './utils/onemap.js';
 import { getPlacePhotoUrl, getStaticMapUrl, initGoogleMap } from './utils/googleMaps.js';
 import { searchOneMapLocations } from './api.js';
@@ -95,6 +105,55 @@ const SPORT_OPTIONS = [
 
 const REGION_OPTIONS = ['Downtown', 'North', 'East', 'South', 'West', 'Central'];
 
+const COMMUNITY_COVER_STYLES = {
+  basketball: { bg: '#f97316', accent: '#111827' },
+  soccer: { bg: '#22c55e', accent: '#0f172a' },
+  football: { bg: '#f59e0b', accent: '#111827' },
+  tennis: { bg: '#38bdf8', accent: '#0f172a' },
+  badminton: { bg: '#a855f7', accent: '#0f172a' },
+  running: { bg: '#ef4444', accent: '#111827' },
+  cycling: { bg: '#14b8a6', accent: '#0f172a' },
+  volleyball: { bg: '#fb7185', accent: '#111827' },
+  baseball: { bg: '#60a5fa', accent: '#0f172a' },
+  golf: { bg: '#84cc16', accent: '#0f172a' },
+  swimming: { bg: '#38bdf8', accent: '#0f172a' }
+};
+
+const escapeXml = (value = '') =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+const getCommunitySportCoverUrl = (sport) => {
+  const label = sport && String(sport).trim() ? String(sport).trim() : 'Community';
+  const key = label.toLowerCase();
+  const theme = COMMUNITY_COVER_STYLES[key] || { bg: '#1f2937', accent: '#e2e8f0' };
+  const text = escapeXml(label.toUpperCase());
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="${theme.bg}" stop-opacity="0.95"/>
+          <stop offset="100%" stop-color="#0f172a" stop-opacity="0.95"/>
+        </linearGradient>
+      </defs>
+      <rect width="640" height="360" fill="url(#g)"/>
+      <circle cx="520" cy="60" r="70" fill="${theme.accent}" opacity="0.22"/>
+      <circle cx="110" cy="320" r="90" fill="${theme.accent}" opacity="0.12"/>
+      <text x="40" y="210" fill="#f8fafc" font-size="40" font-family="Inter, Arial, sans-serif" font-weight="700" letter-spacing="1">
+        ${text}
+      </text>
+      <text x="40" y="250" fill="#e2e8f0" font-size="18" font-family="Inter, Arial, sans-serif" font-weight="500">
+        Community
+      </text>
+    </svg>
+  `;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
 function App() {
   const location = useLocation();
   if (import.meta.env.DEV) {
@@ -125,9 +184,6 @@ function App() {
       const a = prev[i];
       const b = next[i];
       if (!a || !b || a.id !== b.id) {
-        return false;
-      }
-      if (a.image_url !== b.image_url) {
         return false;
       }
     }
@@ -182,6 +238,42 @@ function App() {
 
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+
+  const updateCommunityCollections = (communityId, transform) => {
+    if (!communityId || typeof transform !== 'function') {
+      return;
+    }
+    const apply = (list) =>
+      list.map((item) => (item.id === communityId ? transform(item) : item));
+    setCommunities((prev) => apply(prev));
+    setNearbyCommunitiesData((prev) => apply(prev));
+  };
+
+  const applyCommunityMembershipStatus = (communityId, status) => {
+    updateCommunityCollections(communityId, (item) => {
+      const wasMember = Number(item.is_member) === 1;
+      const isMemberNow = status === 'approved';
+      const currentCount = Number(item.member_count) || 0;
+      const nextCount = isMemberNow && !wasMember
+        ? currentCount + 1
+        : !isMemberNow && wasMember
+          ? Math.max(currentCount - 1, 0)
+          : currentCount;
+      return {
+        ...item,
+        is_member: isMemberNow ? 1 : 0,
+        membership_status: status || 'none',
+        member_count: nextCount
+      };
+    });
+  };
+
+  const mergeCommunityIntoCollections = (updated) => {
+    if (!updated || !updated.id) {
+      return;
+    }
+    updateCommunityCollections(updated.id, (item) => ({ ...item, ...updated }));
+  };
 
   const apiUrl = getApiUrl();
   const navigate = useNavigate();
@@ -550,6 +642,7 @@ function App() {
       };
       const data = await createCommunity(payload);
       setCommunities((prev) => [data.community, ...prev]);
+      setNearbyCommunitiesData((prev) => [data.community, ...prev]);
       setCommunityForm({
         name: '',
         description: '',
@@ -1384,14 +1477,11 @@ function App() {
     );
   };
 
-  const getCommunityImageUrl = (community) => {
-    if (community?.image_url) {
-      return community.image_url;
-    }
-    if (community?.region) {
-      return buildMapImageUrl(community.region);
-    }
-    return '';
+  const getCommunityImageUrl = (community, placePhotoUrl = '', options = {}) => {
+    const imageUrl = typeof community?.image_url === 'string' ? community.image_url.trim() : '';
+    const baseImageFailed = Boolean(options.baseImageFailed);
+    const customImage = imageUrl && !isStaticMapUrl(imageUrl) && !baseImageFailed ? imageUrl : '';
+    return customImage || placePhotoUrl || getCommunitySportCoverUrl(community?.sport);
   };
 
   const EventDetailPage = () => {
@@ -1402,6 +1492,10 @@ function App() {
     const [chatMessages, setChatMessages] = useState([]);
     const [chatLoading, setChatLoading] = useState(false);
     const [chatError, setChatError] = useState('');
+    const [memberError, setMemberError] = useState('');
+    const [members, setMembers] = useState([]);
+    const [membersLoading, setMembersLoading] = useState(false);
+    const [memberActionKey, setMemberActionKey] = useState('');
     const [draft, setDraft] = useState('');
     const [imageUploadError, setImageUploadError] = useState('');
     const [imageUploading, setImageUploading] = useState(false);
@@ -1636,6 +1730,38 @@ function App() {
       };
     }, [event, user]);
 
+    useEffect(() => {
+      if (!event || !user || user.id !== event.host_id) {
+        setMembers([]);
+        setMembersLoading(false);
+        setMemberError('');
+        return;
+      }
+      let active = true;
+      setMembersLoading(true);
+      setMemberError('');
+      getEventMembers(event.id)
+        .then((data) => {
+          if (active) {
+            setMembers(data.members || []);
+          }
+        })
+        .catch((err) => {
+          if (active) {
+            setMemberError(err.message);
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setMembersLoading(false);
+          }
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [event, user]);
+
     const handleSend = async (eventForm) => {
       eventForm.preventDefault();
       const message = draft.trim();
@@ -1649,6 +1775,37 @@ function App() {
         setChatMessages((prev) => [...prev, data.message]);
       } catch (err) {
         setChatError(err.message);
+      }
+    };
+
+    const handleEventMemberAction = async (memberId, action) => {
+      if (!event || !memberId) {
+        return;
+      }
+      const actionKey = `${action}-${memberId}`;
+      setMemberActionKey(actionKey);
+      setMemberError('');
+      const hasMember = members.some((item) => Number(item.user_id) === Number(memberId));
+      try {
+        if (action === 'kick') {
+          await kickEventMember(event.id, memberId);
+        } else {
+          await banEventMember(event.id, memberId);
+        }
+        setMembers((prev) => prev.filter((item) => Number(item.user_id) !== Number(memberId)));
+        if (hasMember) {
+          setEvent((prev) => {
+            if (!prev) {
+              return prev;
+            }
+            const currentCount = Number(prev.rsvp_count) || 0;
+            return { ...prev, rsvp_count: Math.max(currentCount - 1, 0) };
+          });
+        }
+      } catch (err) {
+        setMemberError(err.message);
+      } finally {
+        setMemberActionKey('');
       }
     };
 
@@ -1936,6 +2093,45 @@ function App() {
             <h3>About this event</h3>
             <p>{event.description || 'No description yet.'}</p>
           </div>
+          {isHost ? (
+            <div className="moderation">
+              <div className="moderation__title">Manage attendees</div>
+              {membersLoading ? <div className="loading">Loading attendees...</div> : null}
+              {memberError ? <div className="alert alert--error">{memberError}</div> : null}
+              {members.length ? (
+                <div className="moderation__list">
+                  {members.map((member) => (
+                    <div className="moderation__item" key={member.user_id}>
+                      <div>
+                        <div className="moderation__name">{member.user_name}</div>
+                        <div className="moderation__meta">{member.user_email}</div>
+                      </div>
+                      <div className="moderation__actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--small"
+                          onClick={() => handleEventMemberAction(member.user_id, 'kick')}
+                          disabled={memberActionKey === `kick-${member.user_id}`}
+                        >
+                          {memberActionKey === `kick-${member.user_id}` ? 'Kicking...' : 'Kick'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--danger btn--small"
+                          onClick={() => handleEventMemberAction(member.user_id, 'ban')}
+                          disabled={memberActionKey === `ban-${member.user_id}`}
+                        >
+                          {memberActionKey === `ban-${member.user_id}` ? 'Banning...' : 'Ban'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="chat__empty">No attendees to manage.</div>
+              )}
+            </div>
+          ) : null}
         </div>
         <aside className="event-detail__chat">
           <h3>Event chat</h3>
@@ -2162,7 +2358,22 @@ function App() {
     const [inviteLoading, setInviteLoading] = useState(false);
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteError, setInviteError] = useState('');
-    const mapRef = useRef(null);
+    const [memberError, setMemberError] = useState('');
+    const [members, setMembers] = useState([]);
+    const [membersLoading, setMembersLoading] = useState(false);
+    const [memberActionKey, setMemberActionKey] = useState('');
+    const [memberRoleActionKey, setMemberRoleActionKey] = useState('');
+    const [placePhoto, setPlacePhoto] = useState(null);
+    const [baseImageFailed, setBaseImageFailed] = useState(false);
+    const parseFlag = (value) =>
+      value === true || value === 1 || value === '1' || value === 'true' || value === 't';
+    const creatorMatchesUser = Boolean(
+      user && community && Number(user.id) === Number(community.creator_id)
+    );
+    const isOwner = parseFlag(community?.is_owner) || creatorMatchesUser || community?.membership_role === 'owner';
+    const isAdmin = parseFlag(community?.is_admin) || community?.membership_role === 'admin';
+    const canEditCommunity = isOwner || isAdmin;
+    const canManageRequests = isOwner || isAdmin;
 
 
     useEffect(() => {
@@ -2206,30 +2417,61 @@ function App() {
     }, [community]);
 
     useEffect(() => {
-      const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
-      if (!apiKey || !mapRef.current || !community) {
-        return undefined;
+      setBaseImageFailed(false);
+    }, [community?.id, community?.image_url]);
+
+    useEffect(() => {
+      let active = true;
+      if (!community) {
+        setPlacePhoto(null);
+        return () => {
+          active = false;
+        };
       }
-      const label = stripLocationLabel(community.region);
-      const center = parseLatLng(community.region || '');
-      if (!label && !center) {
-        return undefined;
+
+      const hasUsableCustomImage = Boolean(
+        community.image_url && !isStaticMapUrl(community.image_url) && !baseImageFailed
+      );
+      if (hasUsableCustomImage) {
+        setPlacePhoto(null);
+        return () => {
+          active = false;
+        };
       }
-      let cleanup = () => {};
-      initGoogleMap(mapRef.current, apiKey, { center, locationLabel: label })
-        .then((dispose) => {
-          cleanup = dispose;
+
+      const photoQuery = [community.sport || community.name].filter(Boolean).join(' ').trim();
+      if (!photoQuery) {
+        setPlacePhoto(null);
+        return () => {
+          active = false;
+        };
+      }
+
+      const googleKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
+      getPlacePhotoFromBackend(photoQuery, { maxWidth: 900 })
+        .catch(() => null)
+        .then((result) => {
+          if (result || !googleKey) {
+            return result || null;
+          }
+          return getPlacePhotoUrl(photoQuery, googleKey, { maxWidth: 900 }).catch(() => null);
         })
-        .catch(() => {});
-      return () => cleanup();
-    }, [community]);
+        .then((result) => {
+          if (active) {
+            setPlacePhoto(result || null);
+          }
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [community, baseImageFailed]);
 
     useEffect(() => {
       if (!community || !user) {
         return;
       }
-      const isMember = Boolean(community.is_member);
-      const isOwner = Boolean(community.is_owner);
+      const isMember = parseFlag(community.is_member);
       if (!isMember && !isOwner) {
         setMessages([]);
         setChatError('');
@@ -2262,7 +2504,7 @@ function App() {
     }, [community, user]);
 
     useEffect(() => {
-      if (!community || !community.is_owner) {
+      if (!community || !canManageRequests) {
         return;
       }
       let active = true;
@@ -2282,10 +2524,41 @@ function App() {
       return () => {
         active = false;
       };
-    }, [community]);
+    }, [community, canManageRequests]);
 
     useEffect(() => {
-      if (!community || !community.is_owner) {
+      if (!community || !isOwner) {
+        setMembers([]);
+        setMembersLoading(false);
+        setMemberError('');
+        return;
+      }
+      let active = true;
+      setMembersLoading(true);
+      setMemberError('');
+      getCommunityMembers(community.id)
+        .then((data) => {
+          if (active) {
+            setMembers(data.members || []);
+          }
+        })
+        .catch((err) => {
+          if (active) {
+            setMemberError(err.message);
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setMembersLoading(false);
+          }
+        });
+      return () => {
+        active = false;
+      };
+    }, [community, isOwner]);
+
+    useEffect(() => {
+      if (!community || !isOwner) {
         return;
       }
       let active = true;
@@ -2305,7 +2578,7 @@ function App() {
       return () => {
         active = false;
       };
-    }, [community]);
+    }, [community, isOwner]);
 
     const handleJoinLeaveCommunity = async () => {
       if (!community || !user) {
@@ -2316,19 +2589,33 @@ function App() {
       try {
         if (community.is_member) {
           await leaveCommunity(community.id);
-          setCommunity((prev) => prev && { ...prev, is_member: 0, membership_status: 'none' });
+          setCommunity((prev) =>
+            prev &&
+            {
+              ...prev,
+              is_member: 0,
+              membership_status: 'none',
+              member_count: Math.max((Number(prev.member_count) || 0) - 1, 0)
+            }
+          );
+          applyCommunityMembershipStatus(community.id, 'none');
           setMessages([]);
         } else {
           const data = await joinCommunity(community.id);
           const nextStatus = data.status || (community.visibility === 'private' ? 'pending' : 'approved');
+          const nextIsMember = nextStatus === 'approved';
           setCommunity((prev) =>
             prev &&
             {
               ...prev,
               membership_status: nextStatus,
-              is_member: nextStatus === 'approved' ? 1 : 0
+              is_member: nextIsMember ? 1 : 0,
+              member_count: nextIsMember
+                ? (Number(prev.member_count) || 0) + (Number(prev.is_member) === 1 ? 0 : 1)
+                : Number(prev.member_count) || 0
             }
           );
+          applyCommunityMembershipStatus(community.id, nextStatus);
         }
       } catch (err) {
         setCommunityError(err.message);
@@ -2345,6 +2632,7 @@ function App() {
         await acceptCommunityInvite(community.invite_id);
         const refreshed = await getCommunity(community.id);
         setCommunity(refreshed.community);
+        mergeCommunityIntoCollections(refreshed.community);
       } catch (err) {
         setCommunityError(err.message);
       }
@@ -2358,6 +2646,7 @@ function App() {
         await declineCommunityInvite(community.invite_id);
         const refreshed = await getCommunity(community.id);
         setCommunity(refreshed.community);
+        mergeCommunityIntoCollections(refreshed.community);
       } catch (err) {
         setCommunityError(err.message);
       }
@@ -2404,9 +2693,6 @@ function App() {
     };
 
     const handleEditCommunityImageChange = (eventField) => {
-      if (editForm.region && editForm.region.trim()) {
-        return;
-      }
       const file = eventField.target.files && eventField.target.files[0];
       if (!file) {
         return;
@@ -2439,12 +2725,13 @@ function App() {
           description: editForm.description.trim(),
           sport: editForm.sport.trim(),
           region: editForm.region.trim(),
-          image_url: editForm.region.trim() ? '' : editForm.image_url,
+          image_url: editForm.image_url.trim(),
           max_members: editForm.max_members,
           visibility: editForm.visibility
         };
         const data = await updateCommunity(community.id, payload);
         setCommunity(data.community);
+        mergeCommunityIntoCollections(data.community);
         setEditOpen(false);
       } catch (err) {
         setCommunityError(err.message);
@@ -2477,6 +2764,64 @@ function App() {
       }
     };
 
+    const handleCommunityMemberAction = async (userId, action) => {
+      if (!community) {
+        return;
+      }
+      const actionKey = `${action}-${userId}`;
+      setMemberActionKey(actionKey);
+      setMemberError('');
+      const hasMember = members.some((item) => Number(item.user_id) === Number(userId));
+      try {
+        if (action === 'kick') {
+          await kickCommunityMember(community.id, userId);
+        } else {
+          await banCommunityMember(community.id, userId);
+        }
+        if (hasMember) {
+          setMembers((prev) => prev.filter((item) => Number(item.user_id) !== Number(userId)));
+          setCommunity((prev) => {
+            if (!prev) {
+              return prev;
+            }
+            const currentCount = Number(prev.member_count) || 0;
+            return { ...prev, member_count: Math.max(currentCount - 1, 0) };
+          });
+          updateCommunityCollections(community.id, (item) => {
+            const currentCount = Number(item.member_count) || 0;
+            return { ...item, member_count: Math.max(currentCount - 1, 0) };
+          });
+        }
+      } catch (err) {
+        setMemberError(err.message);
+      } finally {
+        setMemberActionKey('');
+      }
+    };
+
+    const handleUpdateMemberRole = async (userId, role) => {
+      if (!community) {
+        return;
+      }
+      const actionKey = `${role}-${userId}`;
+      setMemberRoleActionKey(actionKey);
+      setMemberError('');
+      try {
+        await updateCommunityMemberRole(community.id, userId, role);
+        setMembers((prev) =>
+          prev.map((item) =>
+            Number(item.user_id) === Number(userId)
+              ? { ...item, role }
+              : item
+          )
+        );
+      } catch (err) {
+        setMemberError(err.message);
+      } finally {
+        setMemberRoleActionKey('');
+      }
+    };
+
     if (loadingCommunity) {
       return (
         <section className="section">
@@ -2504,18 +2849,17 @@ function App() {
     const membersLabel = community.max_members
       ? `${community.member_count || 0}/${community.max_members}`
       : `${community.member_count || 0}`;
-    const imageUrl = getCommunityImageUrl(community);
-    const communityLabel = stripLocationLabel(community.region) || community.name;
-    const hasRegion = Boolean(stripLocationLabel(community.region));
-    const showMap = hasRegion && Boolean(import.meta.env.VITE_GOOGLE_MAPS_KEY);
-    const isOwner = Boolean(community.is_owner);
-    const isMember = Boolean(community.is_member);
+    const placePhotoUrl = placePhoto?.url || '';
+    const attribution = placePhoto?.attribution || '';
+    const imageUrl = getCommunityImageUrl(community, placePhotoUrl, { baseImageFailed });
+    const hasCustomImage = Boolean(
+      community.image_url && !isStaticMapUrl(community.image_url) && !baseImageFailed
+    );
+    const isMember = parseFlag(community.is_member);
     const isPending = community.membership_status === 'pending';
     const isInviteOnly = community.visibility === 'invite';
     const ownerPrivacy = community.creator_privacy_contact || 'members';
     const canMessageOwner = Boolean(user && user.id !== community.creator_id && ownerPrivacy !== 'no_one');
-    const editHasRegion = Boolean(editForm.region && editForm.region.trim());
-    const editMapPreview = editHasRegion ? buildMapImageUrl(editForm.region) : '';
 
     return (
       <section className="section event-detail">
@@ -2526,33 +2870,33 @@ function App() {
         </div>
         <div className="event-detail__content">
           <div className="event-detail__image">
-            {showMap ? (
-              <div ref={mapRef} className="event-detail__map-frame" />
-            ) : imageUrl ? (
-              hasRegion ? (
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(communityLabel)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="event-detail__image-link"
-                >
-                  <img src={imageUrl} alt={`${community.name} map`} />
-                </a>
-              ) : (
-                <img src={imageUrl} alt={`${community.name} cover`} />
-              )
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt={`${community.name} cover`}
+                onError={() => {
+                  if (hasCustomImage) {
+                    setBaseImageFailed(true);
+                    return;
+                  }
+                  setPlacePhoto(null);
+                }}
+              />
             ) : (
               <div className="event-card__image-placeholder">
                 <span>{community.sport || 'Community'}</span>
               </div>
             )}
+            {attribution ? (
+              <div className="image-attribution" dangerouslySetInnerHTML={{ __html: attribution }} />
+            ) : null}
           </div>
           <div className="event-detail__header">
             <span className="pill">{community.sport || 'Community'}</span>
             <h2>{community.name}</h2>
             <p className="event-detail__meta">{community.region || 'All regions'}</p>
             <div className="event-card__actions">
-              {user ? (
+              {user && !isOwner ? (
                 <button
                   type="button"
                   className="btn btn--ghost"
@@ -2562,7 +2906,7 @@ function App() {
                   {isMember ? 'Leave' : isPending ? 'Requested' : isInviteOnly ? 'Invite only' : 'Join'}
                 </button>
               ) : null}
-              {isOwner ? (
+              {canEditCommunity ? (
                 <button type="button" className="btn btn--primary" onClick={() => setEditOpen(true)}>
                   Edit community
                 </button>
@@ -2579,7 +2923,7 @@ function App() {
               <div>{community.visibility}</div>
             </div>
             <div>
-              <div className="event-card__label">Owner</div>
+              <div className="event-card__label">Creator</div>
               <div className="host-row">
                 <span>{community.creator_name}</span>
                 {canMessageOwner ? (
@@ -2607,6 +2951,77 @@ function App() {
             <h3>About this community</h3>
             <p>{community.description || 'No description yet.'}</p>
           </div>
+          {isOwner ? (
+            <div className="moderation">
+              <div className="moderation__title">Manage members</div>
+              {membersLoading ? <div className="loading">Loading members...</div> : null}
+              {memberError ? <div className="alert alert--error">{memberError}</div> : null}
+              {members.length ? (
+                <div className="moderation__list">
+                  {members.map((member) => {
+                    const isOwnerMember = member.role === 'owner';
+                    return (
+                      <div className="moderation__item" key={member.user_id}>
+                        <div>
+                          <div className="moderation__name">{member.user_name}</div>
+                          <div className="moderation__meta">
+                            {member.user_email} {member.role ? `· ${member.role}` : ''}
+                          </div>
+                        </div>
+                        <div className="moderation__actions">
+                          {isOwnerMember ? (
+                            <span className="pill">Creator</span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--small"
+                                onClick={() =>
+                                  handleUpdateMemberRole(
+                                    member.user_id,
+                                    member.role === 'admin' ? 'member' : 'admin'
+                                  )
+                                }
+                                disabled={
+                                  memberRoleActionKey === `admin-${member.user_id}` ||
+                                  memberRoleActionKey === `member-${member.user_id}`
+                                }
+                              >
+                                {memberRoleActionKey === `admin-${member.user_id}` ||
+                                memberRoleActionKey === `member-${member.user_id}`
+                                  ? 'Saving...'
+                                  : member.role === 'admin'
+                                    ? 'Set member'
+                                    : 'Make admin'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--small"
+                                onClick={() => handleCommunityMemberAction(member.user_id, 'kick')}
+                                disabled={memberActionKey === `kick-${member.user_id}`}
+                              >
+                                {memberActionKey === `kick-${member.user_id}` ? 'Kicking...' : 'Kick'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--danger btn--small"
+                                onClick={() => handleCommunityMemberAction(member.user_id, 'ban')}
+                                disabled={memberActionKey === `ban-${member.user_id}`}
+                              >
+                                {memberActionKey === `ban-${member.user_id}` ? 'Banning...' : 'Ban'}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="chat__empty">No members to manage.</div>
+              )}
+            </div>
+          ) : null}
         </div>
         <aside className="event-detail__chat">
           <h3>Community chat</h3>
@@ -2668,7 +3083,7 @@ function App() {
           )}
         </aside>
 
-        {isOwner ? (
+        {canManageRequests ? (
           <div className="moderation">
             <div className="moderation__title">Pending requests</div>
             {requestLoading ? <div className="loading">Loading requests...</div> : null}
@@ -2756,32 +3171,26 @@ function App() {
               </button>
               <h2>Edit community</h2>
               <p className="md-modal__lead">Update your community details.</p>
+              {!isOwner ? (
+                <div className="form-hint">Admin access: you can update sport, region, description, and image.</div>
+              ) : null}
               <form className="community-form" onSubmit={handleEditCommunitySubmit}>
                 <div className="image-upload">
                   <span className="image-upload__label">Community image</span>
-                  <label className={`image-upload__box ${editHasRegion ? 'image-upload__box--disabled' : ''}`}>
-                    {editHasRegion ? (
-                      editMapPreview ? (
-                        <img src={editMapPreview} alt="Community region preview" />
-                      ) : (
-                        <div className="image-upload__placeholder">Map</div>
-                      )
-                    ) : editForm.image_url ? (
+                  <label className="image-upload__box">
+                    {editForm.image_url ? (
                       <img src={editForm.image_url} alt="Community preview" />
                     ) : (
-                      <div className="image-upload__placeholder">+</div>
+                      <div className="image-upload__placeholder">{community.sport || 'Community'}</div>
                     )}
                     <input
                       type="file"
                       accept="image/*"
                       onChange={handleEditCommunityImageChange}
-                      disabled={editHasRegion}
                     />
                   </label>
                   <div className="form-hint">
-                    {editHasRegion
-                      ? 'Image will be pulled from the selected region.'
-                      : 'Upload a cover image if you do not have a region.'}
+                    Upload a cover image (optional). If omitted, we’ll try to fetch one based on the sport.
                   </div>
                   {editImageError ? <div className="form-error">{editImageError}</div> : null}
                 </div>
@@ -2793,6 +3202,7 @@ function App() {
                     onChange={(eventField) =>
                       setEditForm((prev) => ({ ...prev, name: eventField.target.value }))
                     }
+                    disabled={!isOwner}
                     required
                   />
                 </label>
@@ -2825,6 +3235,7 @@ function App() {
                     onChange={(eventField) =>
                       setEditForm((prev) => ({ ...prev, max_members: eventField.target.value }))
                     }
+                    disabled={!isOwner}
                   />
                 </label>
                 <label>
@@ -2834,6 +3245,7 @@ function App() {
                     onChange={(eventField) =>
                       setEditForm((prev) => ({ ...prev, visibility: eventField.target.value }))
                     }
+                    disabled={!isOwner}
                   >
                     <option value="public">Public</option>
                     <option value="private">Private</option>
@@ -3259,24 +3671,8 @@ function App() {
                       key={community.id}
                       community={community}
                       canPost={Boolean(user)}
-                      onMembershipChange={(id, status) =>
-                        setCommunities((prev) =>
-                          prev.map((item) =>
-                            item.id === id
-                              ? {
-                                ...item,
-                                is_member: status === 'approved' ? 1 : 0,
-                                membership_status: status
-                              }
-                              : item
-                          )
-                        )
-                      }
-                      onCommunityUpdated={(updated) =>
-                        setCommunities((prev) =>
-                          prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
-                        )
-                      }
+                      onMembershipChange={applyCommunityMembershipStatus}
+                      onCommunityUpdated={mergeCommunityIntoCollections}
                     />
                   ))}
                 </div>
@@ -3367,24 +3763,8 @@ function App() {
                       key={community.id}
                       community={community}
                       canPost={Boolean(user)}
-                      onMembershipChange={(id, status) =>
-                        setCommunities((prev) =>
-                          prev.map((item) =>
-                            item.id === id
-                              ? {
-                                ...item,
-                                is_member: status === 'approved' ? 1 : 0,
-                                membership_status: status
-                              }
-                              : item
-                          )
-                        )
-                      }
-                      onCommunityUpdated={(updated) =>
-                        setCommunities((prev) =>
-                          prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
-                        )
-                      }
+                      onMembershipChange={applyCommunityMembershipStatus}
+                      onCommunityUpdated={mergeCommunityIntoCollections}
                     />
                   ))}
                 </div>

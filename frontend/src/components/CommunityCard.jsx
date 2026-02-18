@@ -191,14 +191,10 @@ function CommunityCard({ community, canPost, onMembershipChange, onCommunityUpda
       if (isMember) {
         await leaveCommunity(community.id);
         onMembershipChange?.(community.id, 'none');
-        setMessages([]);
       } else {
         const data = await joinCommunity(community.id);
         const nextStatus = data.status || (isPrivate ? 'pending' : 'approved');
         onMembershipChange?.(community.id, nextStatus);
-        if (nextStatus !== 'approved') {
-          setMessages([]);
-        }
       }
     } catch (err) {
       setError(err.message);
@@ -312,23 +308,16 @@ function CommunityCard({ community, canPost, onMembershipChange, onCommunityUpda
       <div className="event-card__footer">
         <div className="event-card__host">Community chat</div>
         <div className="event-card__actions">
-          {isOwner ? (
+          {!isOwner ? (
             <button
               type="button"
               className="btn btn--ghost"
-              onClick={() => setEditOpen(true)}
+              onClick={handleJoinLeave}
+              disabled={joining || !canPost || membershipStatus === 'pending'}
             >
-              Edit
+              {isMember ? 'Leave' : membershipStatus === 'pending' ? 'Requested' : 'Join'}
             </button>
           ) : null}
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={handleJoinLeave}
-            disabled={joining || !canPost || membershipStatus === 'pending'}
-          >
-            {isMember ? 'Leave' : membershipStatus === 'pending' ? 'Requested' : 'Join'}
-          </button>
           <Link to={`/communities/${community.id}`} className="btn btn--primary">
             View
           </Link>

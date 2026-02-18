@@ -1,8 +1,44 @@
 const express = require('express');
 const db = require('../db');
 const requireAuth = require('../middleware/requireAuth');
+const { getPlacePhotoReference, buildPhotoProxyUrl } = require('../utils/places');
 
 const router = express.Router();
+
+async function getCommunityAccess(communityId, userId) {
+  const [rows] = await db.execute(
+    `SELECT
+      communities.id,
+      communities.creator_id,
+      cm.role AS member_role,
+      cm.status AS member_status
+    FROM communities
+    LEFT JOIN community_members cm
+      ON cm.community_id = communities.id
+      AND cm.user_id = ?
+    WHERE communities.id = ?
+    LIMIT 1`,
+    [userId, communityId]
+  );
+
+  if (!rows.length) {
+    return null;
+  }
+
+  const row = rows[0];
+  const isOwner = Number(row.creator_id) === Number(userId) || row.member_role === 'owner';
+  const isAdmin = row.member_role === 'admin' && row.member_status === 'approved';
+  return {
+    communityId: row.id,
+    creatorId: row.creator_id,
+    memberRole: row.member_role || null,
+    memberStatus: row.member_status || null,
+    isOwner,
+    isAdmin
+  };
+}
+
+const canManageJoinRequests = (access) => access && (access.isOwner || access.isAdmin);
 
 router.get('/communities', async (req, res) => {
   try {
@@ -10,7 +46,7 @@ router.get('/communities', async (req, res) => {
     const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 12;
     const userId = req.user ? req.user.id : null;
     const userEmail = req.user ? req.user.email : null;
-    const params = userId ? [userId, userId, userId] : [];
+    const params = userId ? [userId, userId, userId, userId, userId, userId] : [];
     if (userId && userEmail) {
       params.push(userEmail);
     }
@@ -31,10 +67,12 @@ router.get('/communities', async (req, res) => {
         users.id AS creator_id,
         users.name AS creator_name,
         users.privacy_contact AS creator_privacy_contact,
-        (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = communities.id) AS member_count,
+        (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = communities.id AND cm.status = 'approved') AS member_count,
         ${userId ? "EXISTS (SELECT 1 FROM community_members cm2 WHERE cm2.community_id = communities.id AND cm2.user_id = ? AND cm2.status = 'approved') AS is_member" : '0 AS is_member'},
-        ${userId ? "EXISTS (SELECT 1 FROM community_members cm3 WHERE cm3.community_id = communities.id AND cm3.user_id = ? AND cm3.role = 'owner') AS is_owner" : '0 AS is_owner'},
-        ${userId ? "COALESCE((SELECT cm4.status FROM community_members cm4 WHERE cm4.community_id = communities.id AND cm4.user_id = ? LIMIT 1), 'none') AS membership_status" : "'none' AS membership_status"}
+        ${userId ? "(communities.creator_id = ? OR EXISTS (SELECT 1 FROM community_members cm3 WHERE cm3.community_id = communities.id AND cm3.user_id = ? AND cm3.role = 'owner')) AS is_owner" : '0 AS is_owner'},
+        ${userId ? "COALESCE((SELECT cm4.status FROM community_members cm4 WHERE cm4.community_id = communities.id AND cm4.user_id = ? LIMIT 1), 'none') AS membership_status" : "'none' AS membership_status"},
+        ${userId ? "EXISTS (SELECT 1 FROM community_members cm5 WHERE cm5.community_id = communities.id AND cm5.user_id = ? AND cm5.status = 'approved' AND cm5.role = 'admin') AS is_admin" : '0 AS is_admin'},
+        ${userId ? "COALESCE((SELECT cm6.role FROM community_members cm6 WHERE cm6.community_id = communities.id AND cm6.user_id = ? LIMIT 1), 'none') AS membership_role" : "'none' AS membership_role"}
         ${inviteSelect}
       FROM communities
       JOIN users ON users.id = communities.creator_id
@@ -63,14 +101,20 @@ router.get('/communities/:id', async (req, res) => {
       ? "EXISTS (SELECT 1 FROM community_members cm2 WHERE cm2.community_id = communities.id AND cm2.user_id = ? AND cm2.status = 'approved') AS is_member"
       : '0 AS is_member';
     const isOwnerSelect = userId
-      ? "EXISTS (SELECT 1 FROM community_members cm3 WHERE cm3.community_id = communities.id AND cm3.user_id = ? AND cm3.role = 'owner') AS is_owner"
+      ? "(communities.creator_id = ? OR EXISTS (SELECT 1 FROM community_members cm3 WHERE cm3.community_id = communities.id AND cm3.user_id = ? AND cm3.role = 'owner')) AS is_owner"
       : '0 AS is_owner';
     const statusSelect = userId
       ? "COALESCE((SELECT cm4.status FROM community_members cm4 WHERE cm4.community_id = communities.id AND cm4.user_id = ? LIMIT 1), 'none') AS membership_status"
       : "'none' AS membership_status";
+    const isAdminSelect = userId
+      ? "EXISTS (SELECT 1 FROM community_members cm5 WHERE cm5.community_id = communities.id AND cm5.user_id = ? AND cm5.status = 'approved' AND cm5.role = 'admin') AS is_admin"
+      : '0 AS is_admin';
+    const roleSelect = userId
+      ? "COALESCE((SELECT cm6.role FROM community_members cm6 WHERE cm6.community_id = communities.id AND cm6.user_id = ? LIMIT 1), 'none') AS membership_role"
+      : "'none' AS membership_role";
 
     if (userId) {
-      params.push(userId, userId, userId);
+      params.push(userId, userId, userId, userId, userId, userId);
       if (userEmail) {
         params.push(userEmail);
       }
@@ -96,10 +140,12 @@ router.get('/communities/:id', async (req, res) => {
         users.id AS creator_id,
         users.name AS creator_name,
         users.privacy_contact AS creator_privacy_contact,
-        (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = communities.id) AS member_count,
+        (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = communities.id AND cm.status = 'approved') AS member_count,
         ${isMemberSelect},
         ${isOwnerSelect},
-        ${statusSelect}
+        ${statusSelect},
+        ${isAdminSelect},
+        ${roleSelect}
         ${inviteSelect}
       FROM communities
       JOIN users ON users.id = communities.creator_id
@@ -140,6 +186,17 @@ router.post('/communities', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Community name is required' });
     }
 
+    if (!imageUrl && sport) {
+      try {
+        const photoRef = await getPlacePhotoReference(`${sport} sport`);
+        if (photoRef) {
+          imageUrl = buildPhotoProxyUrl(req, photoRef);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch sport photo', err.message);
+      }
+    }
+
     const [result] = await db.execute(
       `INSERT INTO communities (creator_id, name, description, sport, region, image_url, max_members, visibility)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -175,10 +232,12 @@ router.post('/communities', requireAuth, async (req, res) => {
         users.id AS creator_id,
         users.name AS creator_name,
         users.privacy_contact AS creator_privacy_contact,
-        (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = communities.id) AS member_count,
+        (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = communities.id AND cm.status = 'approved') AS member_count,
         1 AS is_member,
         1 AS is_owner,
-        'approved' AS membership_status
+        'approved' AS membership_status,
+        0 AS is_admin,
+        'owner' AS membership_role
       FROM communities
       JOIN users ON users.id = communities.creator_id
       WHERE communities.id = ?
@@ -301,6 +360,23 @@ router.post('/communities/:id/join', requireAuth, async (req, res) => {
 
     const visibility = communities[0].visibility || 'public';
     const autoApprove = visibility !== 'private' && visibility !== 'invite';
+
+    const [existingRows] = await db.execute(
+      'SELECT status FROM community_members WHERE community_id = ? AND user_id = ? LIMIT 1',
+      [communityId, req.user.id]
+    );
+    if (existingRows.length) {
+      const existingStatus = existingRows[0].status || 'approved';
+      if (existingStatus === 'banned') {
+        return res.status(403).json({ error: 'You are banned from this community' });
+      }
+      return res.status(200).json({
+        ok: true,
+        alreadyMember: true,
+        status: existingStatus
+      });
+    }
+
     if (visibility === 'invite') {
       const [invites] = await db.execute(
         "SELECT id FROM community_invites WHERE community_id = ? AND email = ? AND status = 'pending' LIMIT 1",
@@ -320,25 +396,18 @@ router.post('/communities/:id/join', requireAuth, async (req, res) => {
       }
     }
 
-    try {
-      await db.execute(
-        `INSERT INTO community_members (community_id, user_id, role, status, approved_by, approved_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          communityId,
-          req.user.id,
-          'member',
-          autoApprove ? 'approved' : 'pending',
-          autoApprove ? req.user.id : null,
-          autoApprove ? new Date() : null
-        ]
-      );
-    } catch (err) {
-      if (err.code === 'ER_DUP_ENTRY' || err.code === '23505') {
-        return res.status(200).json({ ok: true, alreadyMember: true });
-      }
-      throw err;
-    }
+    await db.execute(
+      `INSERT INTO community_members (community_id, user_id, role, status, approved_by, approved_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        communityId,
+        req.user.id,
+        'member',
+        autoApprove ? 'approved' : 'pending',
+        autoApprove ? req.user.id : null,
+        autoApprove ? new Date() : null
+      ]
+    );
 
     return res.status(201).json({ ok: true, status: autoApprove ? 'approved' : 'pending' });
   } catch (err) {
@@ -359,7 +428,7 @@ router.post('/communities/:id/invites', requireAuth, async (req, res) => {
       [communityId, req.user.id]
     );
     if (!owners.length) {
-      return res.status(403).json({ error: 'Only the owner can invite members' });
+      return res.status(403).json({ error: 'Only creator can invite members' });
     }
 
     const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
@@ -399,7 +468,7 @@ router.get('/communities/:id/invites', requireAuth, async (req, res) => {
       [communityId, req.user.id]
     );
     if (!owners.length) {
-      return res.status(403).json({ error: 'Only the owner can view invites' });
+      return res.status(403).json({ error: 'Only creator can view invites' });
     }
 
     const [rows] = await db.execute(
@@ -434,6 +503,14 @@ router.post('/invites/:id/accept', requireAuth, async (req, res) => {
 
     if (invites[0].email !== req.user.email) {
       return res.status(403).json({ error: 'Invite does not match your account' });
+    }
+
+    const [members] = await db.execute(
+      'SELECT status FROM community_members WHERE community_id = ? AND user_id = ? LIMIT 1',
+      [invites[0].community_id, req.user.id]
+    );
+    if (members.length && members[0].status === 'banned') {
+      return res.status(403).json({ error: 'You are banned from this community' });
     }
 
     await db.execute(
@@ -490,6 +567,14 @@ router.delete('/communities/:id/join', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid community id' });
     }
 
+    const access = await getCommunityAccess(communityId, req.user.id);
+    if (!access) {
+      return res.status(404).json({ error: 'Community not found' });
+    }
+    if (access.isOwner) {
+      return res.status(400).json({ error: 'Creator cannot leave the community' });
+    }
+
     await db.execute(
       'DELETE FROM community_members WHERE community_id = ? AND user_id = ?',
       [communityId, req.user.id]
@@ -516,28 +601,47 @@ router.patch('/communities/:id', requireAuth, async (req, res) => {
     if (!communities.length) {
       return res.status(404).json({ error: 'Community not found' });
     }
-    if (communities[0].creator_id !== req.user.id) {
-      return res.status(403).json({ error: 'Only the owner can edit this community' });
-    }
 
-    const name = typeof req.body.name === 'string' ? req.body.name.trim() : communities[0].name;
+    const access = await getCommunityAccess(communityId, req.user.id);
+    if (!access || (!access.isOwner && !access.isAdmin)) {
+      return res.status(403).json({ error: 'Only creator or admin can edit this community' });
+    }
+    const isOwner = access.isOwner;
+
+    const name = isOwner && typeof req.body.name === 'string' ? req.body.name.trim() : communities[0].name;
     const description = typeof req.body.description === 'string' ? req.body.description.trim() : communities[0].description;
     const sport = typeof req.body.sport === 'string' ? req.body.sport.trim() : communities[0].sport;
     const region = typeof req.body.region === 'string' ? req.body.region.trim() : communities[0].region;
     let imageUrl = typeof req.body.image_url === 'string' ? req.body.image_url.trim() : communities[0].image_url;
-    const visibility = req.body.visibility === 'private'
-      ? 'private'
-      : req.body.visibility === 'invite'
-        ? 'invite'
-        : 'public';
+    const visibility = isOwner
+      ? req.body.visibility === 'private'
+        ? 'private'
+        : req.body.visibility === 'invite'
+          ? 'invite'
+          : 'public'
+      : communities[0].visibility;
 
-    let maxMembers = Number.parseInt(req.body.max_members, 10);
-    if (!Number.isInteger(maxMembers) || maxMembers < 1) {
-      maxMembers = communities[0].max_members || null;
+    let maxMembers = communities[0].max_members || null;
+    if (isOwner) {
+      maxMembers = Number.parseInt(req.body.max_members, 10);
+      if (!Number.isInteger(maxMembers) || maxMembers < 1) {
+        maxMembers = communities[0].max_members || null;
+      }
     }
 
     if (!name) {
       return res.status(400).json({ error: 'Community name is required' });
+    }
+
+    if (!imageUrl && sport) {
+      try {
+        const photoRef = await getPlacePhotoReference(`${sport} sport`);
+        if (photoRef) {
+          imageUrl = buildPhotoProxyUrl(req, photoRef);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch sport photo', err.message);
+      }
     }
 
     await db.execute(
@@ -570,21 +674,172 @@ router.patch('/communities/:id', requireAuth, async (req, res) => {
         users.id AS creator_id,
         users.name AS creator_name,
         users.privacy_contact AS creator_privacy_contact,
-        (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = communities.id) AS member_count,
-        1 AS is_member,
-        1 AS is_owner,
-        'approved' AS membership_status
+        (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = communities.id AND cm.status = 'approved') AS member_count,
+        EXISTS (SELECT 1 FROM community_members cm2 WHERE cm2.community_id = communities.id AND cm2.user_id = ? AND cm2.status = 'approved') AS is_member,
+        (communities.creator_id = ? OR EXISTS (SELECT 1 FROM community_members cm3 WHERE cm3.community_id = communities.id AND cm3.user_id = ? AND cm3.role = 'owner')) AS is_owner,
+        COALESCE((SELECT cm4.status FROM community_members cm4 WHERE cm4.community_id = communities.id AND cm4.user_id = ? LIMIT 1), 'none') AS membership_status,
+        EXISTS (SELECT 1 FROM community_members cm5 WHERE cm5.community_id = communities.id AND cm5.user_id = ? AND cm5.status = 'approved' AND cm5.role = 'admin') AS is_admin,
+        COALESCE((SELECT cm6.role FROM community_members cm6 WHERE cm6.community_id = communities.id AND cm6.user_id = ? LIMIT 1), 'none') AS membership_role
       FROM communities
       JOIN users ON users.id = communities.creator_id
       WHERE communities.id = ?
       LIMIT 1`,
-      [communityId]
+      [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, communityId]
     );
 
     return res.json({ community: rows[0] });
   } catch (err) {
     console.error('Failed to update community', err);
     return res.status(500).json({ error: 'Failed to update community' });
+  }
+});
+
+router.get('/communities/:id/members', requireAuth, async (req, res) => {
+  try {
+    const communityId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(communityId)) {
+      return res.status(400).json({ error: 'Invalid community id' });
+    }
+
+    const access = await getCommunityAccess(communityId, req.user.id);
+    if (!access) {
+      return res.status(404).json({ error: 'Community not found' });
+    }
+    if (!access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ error: 'Creator or admin access required' });
+    }
+
+    const [rows] = await db.execute(
+      `SELECT
+        community_members.user_id,
+        community_members.role,
+        users.name AS user_name,
+        users.email AS user_email,
+        users.avatar_url AS user_avatar,
+        community_members.created_at
+      FROM community_members
+      JOIN users ON users.id = community_members.user_id
+      WHERE community_members.community_id = ?
+        AND community_members.status = 'approved'
+      ORDER BY CASE WHEN community_members.role = 'owner' THEN 0 ELSE 1 END, users.name ASC`,
+      [communityId]
+    );
+
+    return res.json({ members: rows });
+  } catch (err) {
+    console.error('Failed to load community members', err);
+    return res.status(500).json({ error: 'Failed to load community members' });
+  }
+});
+
+router.patch('/communities/:id/members/:userId/role', requireAuth, async (req, res) => {
+  try {
+    const communityId = Number.parseInt(req.params.id, 10);
+    const userId = Number.parseInt(req.params.userId, 10);
+    if (!Number.isInteger(communityId) || !Number.isInteger(userId)) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    const access = await getCommunityAccess(communityId, req.user.id);
+    if (!access) {
+      return res.status(404).json({ error: 'Community not found' });
+    }
+    if (!access.isOwner) {
+      return res.status(403).json({ error: 'Only creator can assign roles' });
+    }
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'Creator role cannot be changed' });
+    }
+
+    const nextRole = req.body.role === 'admin' ? 'admin' : req.body.role === 'member' ? 'member' : '';
+    if (!nextRole) {
+      return res.status(400).json({ error: 'Role must be member or admin' });
+    }
+
+    const [result] = await db.execute(
+      `UPDATE community_members
+       SET role = ?, status = 'approved', approved_by = ?, approved_at = NOW()
+       WHERE community_id = ? AND user_id = ? AND role <> 'owner'`,
+      [nextRole, req.user.id, communityId, userId]
+    );
+
+    if (!Number(result.affectedRows)) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+
+    return res.json({ ok: true, role: nextRole });
+  } catch (err) {
+    console.error('Failed to update member role', err);
+    return res.status(500).json({ error: 'Failed to update member role' });
+  }
+});
+
+router.post('/communities/:id/members/:userId/kick', requireAuth, async (req, res) => {
+  try {
+    const communityId = Number.parseInt(req.params.id, 10);
+    const userId = Number.parseInt(req.params.userId, 10);
+    if (!Number.isInteger(communityId) || !Number.isInteger(userId)) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    const access = await getCommunityAccess(communityId, req.user.id);
+    if (!access) {
+      return res.status(404).json({ error: 'Community not found' });
+    }
+    if (!access.isOwner) {
+      return res.status(403).json({ error: 'Creator access required' });
+    }
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'Owner cannot be kicked' });
+    }
+
+    const [result] = await db.execute(
+      "DELETE FROM community_members WHERE community_id = ? AND user_id = ? AND role <> 'owner'",
+      [communityId, userId]
+    );
+
+    return res.json({ ok: true, removed: Number(result.affectedRows) > 0 });
+  } catch (err) {
+    console.error('Failed to kick community member', err);
+    return res.status(500).json({ error: 'Failed to kick community member' });
+  }
+});
+
+router.post('/communities/:id/members/:userId/ban', requireAuth, async (req, res) => {
+  try {
+    const communityId = Number.parseInt(req.params.id, 10);
+    const userId = Number.parseInt(req.params.userId, 10);
+    if (!Number.isInteger(communityId) || !Number.isInteger(userId)) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    const access = await getCommunityAccess(communityId, req.user.id);
+    if (!access) {
+      return res.status(404).json({ error: 'Community not found' });
+    }
+    if (!access.isOwner) {
+      return res.status(403).json({ error: 'Creator access required' });
+    }
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'Owner cannot be banned' });
+    }
+
+    await db.execute(
+      `INSERT INTO community_members (community_id, user_id, role, status, approved_by, approved_at)
+       VALUES (?, ?, 'member', 'banned', ?, NOW())
+       ON CONFLICT (community_id, user_id)
+       DO UPDATE SET
+         role = 'member',
+         status = 'banned',
+         approved_by = EXCLUDED.approved_by,
+         approved_at = EXCLUDED.approved_at`,
+      [communityId, userId, req.user.id]
+    );
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Failed to ban community member', err);
+    return res.status(500).json({ error: 'Failed to ban community member' });
   }
 });
 
@@ -595,15 +850,12 @@ router.get('/communities/:id/requests', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid community id' });
     }
 
-    const [communities] = await db.execute(
-      'SELECT id, creator_id FROM communities WHERE id = ?',
-      [communityId]
-    );
-    if (!communities.length) {
+    const access = await getCommunityAccess(communityId, req.user.id);
+    if (!access) {
       return res.status(404).json({ error: 'Community not found' });
     }
-    if (communities[0].creator_id !== req.user.id) {
-      return res.status(403).json({ error: 'Owner access required' });
+    if (!canManageJoinRequests(access)) {
+      return res.status(403).json({ error: 'Creator or admin access required' });
     }
 
     const [rows] = await db.execute(
@@ -635,15 +887,12 @@ router.post('/communities/:id/requests/:userId/approve', requireAuth, async (req
       return res.status(400).json({ error: 'Invalid request' });
     }
 
-    const [communities] = await db.execute(
-      'SELECT id, creator_id FROM communities WHERE id = ?',
-      [communityId]
-    );
-    if (!communities.length) {
+    const access = await getCommunityAccess(communityId, req.user.id);
+    if (!access) {
       return res.status(404).json({ error: 'Community not found' });
     }
-    if (communities[0].creator_id !== req.user.id) {
-      return res.status(403).json({ error: 'Owner access required' });
+    if (!canManageJoinRequests(access)) {
+      return res.status(403).json({ error: 'Creator or admin access required' });
     }
 
     await db.execute(
@@ -668,15 +917,12 @@ router.post('/communities/:id/requests/:userId/reject', requireAuth, async (req,
       return res.status(400).json({ error: 'Invalid request' });
     }
 
-    const [communities] = await db.execute(
-      'SELECT id, creator_id FROM communities WHERE id = ?',
-      [communityId]
-    );
-    if (!communities.length) {
+    const access = await getCommunityAccess(communityId, req.user.id);
+    if (!access) {
       return res.status(404).json({ error: 'Community not found' });
     }
-    if (communities[0].creator_id !== req.user.id) {
-      return res.status(403).json({ error: 'Owner access required' });
+    if (!canManageJoinRequests(access)) {
+      return res.status(403).json({ error: 'Creator or admin access required' });
     }
 
     await db.execute(

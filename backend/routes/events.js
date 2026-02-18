@@ -37,7 +37,7 @@ function buildListQuery(filters, userId) {
   const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 30;
 
   const isGoingSelect = userId
-    ? 'EXISTS (SELECT 1 FROM rsvps r2 WHERE r2.event_id = events.id AND r2.user_id = ?) AS is_going'
+    ? "EXISTS (SELECT 1 FROM rsvps r2 WHERE r2.event_id = events.id AND r2.user_id = ? AND COALESCE(r2.status, 'going') = 'going') AS is_going"
     : '0 AS is_going';
 
   if (userId) {
@@ -91,7 +91,7 @@ function buildListQuery(filters, userId) {
       users.name AS host_name,
       users.privacy_contact AS host_privacy_contact,
       users.avatar_url AS host_avatar,
-      (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id) AS rsvp_count,
+      (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id AND COALESCE(r.status, 'going') = 'going') AS rsvp_count,
       ${isGoingSelect}
     FROM events
     JOIN users ON users.id = events.creator_id
@@ -114,7 +114,7 @@ async function ensureEventAccess(eventId, userId) {
   }
 
   const [rsvps] = await db.execute(
-    'SELECT 1 FROM rsvps WHERE event_id = ? AND user_id = ? LIMIT 1',
+    "SELECT 1 FROM rsvps WHERE event_id = ? AND user_id = ? AND COALESCE(status, 'going') = 'going' LIMIT 1",
     [eventId, userId]
   );
 
@@ -179,7 +179,7 @@ router.get('/events/:id', async (req, res) => {
 
     const userId = req.user ? req.user.id : null;
     const isGoingSelect = userId
-      ? 'EXISTS (SELECT 1 FROM rsvps r2 WHERE r2.event_id = events.id AND r2.user_id = ?) AS is_going'
+      ? "EXISTS (SELECT 1 FROM rsvps r2 WHERE r2.event_id = events.id AND r2.user_id = ? AND COALESCE(r2.status, 'going') = 'going') AS is_going"
       : '0 AS is_going';
     const sql = `
       SELECT
@@ -198,7 +198,7 @@ router.get('/events/:id', async (req, res) => {
         users.name AS host_name,
         users.privacy_contact AS host_privacy_contact,
         users.avatar_url AS host_avatar,
-        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id) AS rsvp_count,
+        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id AND COALESCE(r.status, 'going') = 'going') AS rsvp_count,
         ${isGoingSelect}
       FROM events
       JOIN users ON users.id = events.creator_id
@@ -286,7 +286,7 @@ router.post('/events', requireAuth, async (req, res) => {
         users.name AS host_name,
         users.privacy_contact AS host_privacy_contact,
         users.avatar_url AS host_avatar,
-        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id) AS rsvp_count,
+        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id AND COALESCE(r.status, 'going') = 'going') AS rsvp_count,
         1 AS is_going
       FROM events
       JOIN users ON users.id = events.creator_id
@@ -313,18 +313,34 @@ router.post('/events/:id/rsvp', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid event id' });
     }
 
-    const [events] = await db.execute(
-      'SELECT capacity FROM events WHERE id = ?',
-      [eventId]
-    );
+    const [events] = await db.execute('SELECT capacity FROM events WHERE id = ?', [eventId]);
     if (!events.length) {
       return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const [existingRows] = await db.execute(
+      'SELECT status FROM rsvps WHERE user_id = ? AND event_id = ? LIMIT 1',
+      [req.user.id, eventId]
+    );
+    if (existingRows.length) {
+      const existingStatus = existingRows[0].status || 'going';
+      if (existingStatus === 'banned') {
+        return res.status(403).json({ error: 'You are banned from this event' });
+      }
+      if (existingStatus === 'going') {
+        return res.status(409).json({ error: "Already RSVP'd" });
+      }
+      await db.execute(
+        "UPDATE rsvps SET status = 'going', created_at = CURRENT_TIMESTAMP WHERE user_id = ? AND event_id = ?",
+        [req.user.id, eventId]
+      );
+      return res.status(201).json({ ok: true });
     }
 
     const capacity = events[0].capacity;
     if (capacity && capacity > 0) {
       const [[countRow]] = await db.execute(
-        'SELECT COUNT(*) AS count FROM rsvps WHERE event_id = ?',
+        "SELECT COUNT(*) AS count FROM rsvps WHERE event_id = ? AND COALESCE(status, 'going') = 'going'",
         [eventId]
       );
       if (countRow.count >= capacity) {
@@ -332,17 +348,10 @@ router.post('/events/:id/rsvp', requireAuth, async (req, res) => {
       }
     }
 
-    try {
-      await db.execute(
-        'INSERT INTO rsvps (user_id, event_id) VALUES (?, ?)',
-        [req.user.id, eventId]
-      );
-    } catch (err) {
-      if (err.code === 'ER_DUP_ENTRY' || err.code === '23505') {
-        return res.status(409).json({ error: "Already RSVP'd" });
-      }
-      throw err;
-    }
+    await db.execute(
+      "INSERT INTO rsvps (user_id, event_id, status) VALUES (?, ?, 'going')",
+      [req.user.id, eventId]
+    );
 
     return res.status(201).json({ ok: true });
   } catch (err) {
@@ -359,7 +368,7 @@ router.delete('/events/:id/rsvp', requireAuth, async (req, res) => {
     }
 
     await db.execute(
-      'DELETE FROM rsvps WHERE user_id = ? AND event_id = ?',
+      "DELETE FROM rsvps WHERE user_id = ? AND event_id = ? AND COALESCE(status, 'going') = 'going'",
       [req.user.id, eventId]
     );
 
@@ -453,8 +462,8 @@ router.patch('/events/:id', requireAuth, async (req, res) => {
         users.name AS host_name,
         users.privacy_contact AS host_privacy_contact,
         users.avatar_url AS host_avatar,
-        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id) AS rsvp_count,
-        EXISTS (SELECT 1 FROM rsvps r2 WHERE r2.event_id = events.id AND r2.user_id = ?) AS is_going
+        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id AND COALESCE(r.status, 'going') = 'going') AS rsvp_count,
+        EXISTS (SELECT 1 FROM rsvps r2 WHERE r2.event_id = events.id AND r2.user_id = ? AND COALESCE(r2.status, 'going') = 'going') AS is_going
       FROM events
       JOIN users ON users.id = events.creator_id
       WHERE events.id = ?
@@ -466,6 +475,108 @@ router.patch('/events/:id', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Failed to update event', err);
     return res.status(500).json({ error: 'Failed to update event' });
+  }
+});
+
+router.get('/events/:id/members', requireAuth, async (req, res) => {
+  try {
+    const eventId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(eventId)) {
+      return res.status(400).json({ error: 'Invalid event id' });
+    }
+
+    const [events] = await db.execute('SELECT id, creator_id FROM events WHERE id = ? LIMIT 1', [eventId]);
+    if (!events.length) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    if (events[0].creator_id !== req.user.id) {
+      return res.status(403).json({ error: 'Host access required' });
+    }
+
+    const [rows] = await db.execute(
+      `SELECT
+        users.id AS user_id,
+        users.name AS user_name,
+        users.email AS user_email,
+        users.avatar_url AS user_avatar,
+        rsvps.created_at
+      FROM rsvps
+      JOIN users ON users.id = rsvps.user_id
+      WHERE rsvps.event_id = ?
+        AND COALESCE(rsvps.status, 'going') = 'going'
+      ORDER BY rsvps.created_at ASC`,
+      [eventId]
+    );
+
+    return res.json({ members: rows });
+  } catch (err) {
+    console.error('Failed to load event members', err);
+    return res.status(500).json({ error: 'Failed to load event members' });
+  }
+});
+
+router.post('/events/:id/members/:userId/kick', requireAuth, async (req, res) => {
+  try {
+    const eventId = Number.parseInt(req.params.id, 10);
+    const userId = Number.parseInt(req.params.userId, 10);
+    if (!Number.isInteger(eventId) || !Number.isInteger(userId)) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    const [events] = await db.execute('SELECT id, creator_id FROM events WHERE id = ? LIMIT 1', [eventId]);
+    if (!events.length) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    if (events[0].creator_id !== req.user.id) {
+      return res.status(403).json({ error: 'Host access required' });
+    }
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'Host cannot be kicked' });
+    }
+
+    const [result] = await db.execute(
+      "DELETE FROM rsvps WHERE event_id = ? AND user_id = ? AND COALESCE(status, 'going') = 'going'",
+      [eventId, userId]
+    );
+
+    return res.json({ ok: true, removed: Number(result.affectedRows) > 0 });
+  } catch (err) {
+    console.error('Failed to kick member', err);
+    return res.status(500).json({ error: 'Failed to kick member' });
+  }
+});
+
+router.post('/events/:id/members/:userId/ban', requireAuth, async (req, res) => {
+  try {
+    const eventId = Number.parseInt(req.params.id, 10);
+    const userId = Number.parseInt(req.params.userId, 10);
+    if (!Number.isInteger(eventId) || !Number.isInteger(userId)) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    const [events] = await db.execute('SELECT id, creator_id FROM events WHERE id = ? LIMIT 1', [eventId]);
+    if (!events.length) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    if (events[0].creator_id !== req.user.id) {
+      return res.status(403).json({ error: 'Host access required' });
+    }
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'Host cannot be banned' });
+    }
+
+    await db.execute(
+      `INSERT INTO rsvps (user_id, event_id, status)
+       VALUES (?, ?, 'banned')
+       ON CONFLICT (user_id, event_id)
+       DO UPDATE SET status = 'banned'`,
+      [userId, eventId]
+    );
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Failed to ban member', err);
+    return res.status(500).json({ error: 'Failed to ban member' });
   }
 });
 

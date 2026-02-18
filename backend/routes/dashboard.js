@@ -63,7 +63,7 @@ router.get('/dashboard/user', requireAuth, async (req, res) => {
       [userId]
     );
     const [[rsvpCount]] = await db.execute(
-      'SELECT COUNT(*) AS count FROM rsvps WHERE user_id = ?',
+      "SELECT COUNT(*) AS count FROM rsvps WHERE user_id = ? AND COALESCE(status, 'going') = 'going'",
       [userId]
     );
 
@@ -75,7 +75,7 @@ router.get('/dashboard/user', requireAuth, async (req, res) => {
         events.location,
         events.start_time,
         events.end_time,
-        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id) AS rsvp_count
+        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id AND COALESCE(r.status, 'going') = 'going') AS rsvp_count
       FROM events
       WHERE events.creator_id = ?
       ORDER BY events.start_time DESC
@@ -91,10 +91,11 @@ router.get('/dashboard/user', requireAuth, async (req, res) => {
         events.location,
         events.start_time,
         events.end_time,
-        (SELECT COUNT(*) FROM rsvps r2 WHERE r2.event_id = events.id) AS rsvp_count
+        (SELECT COUNT(*) FROM rsvps r2 WHERE r2.event_id = events.id AND COALESCE(r2.status, 'going') = 'going') AS rsvp_count
       FROM rsvps
       JOIN events ON events.id = rsvps.event_id
       WHERE rsvps.user_id = ?
+        AND COALESCE(rsvps.status, 'going') = 'going'
       ORDER BY events.start_time DESC
       LIMIT 6`,
       [userId]
@@ -119,7 +120,7 @@ router.get('/dashboard/admin', requireRole(['admin', 'superadmin']), async (req,
       `SELECT
         (SELECT COUNT(*) FROM users) AS users,
         (SELECT COUNT(*) FROM events) AS events,
-        (SELECT COUNT(*) FROM rsvps) AS rsvps,
+        (SELECT COUNT(*) FROM rsvps WHERE COALESCE(status, 'going') = 'going') AS rsvps,
         (SELECT COUNT(*) FROM users WHERE role = 'admin') AS admins,
         (SELECT COUNT(*) FROM users WHERE role = 'superadmin') AS superadmins`
     );
@@ -132,7 +133,7 @@ router.get('/dashboard/admin', requireRole(['admin', 'superadmin']), async (req,
         events.location,
         events.start_time,
         users.name AS host_name,
-        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id) AS rsvp_count
+        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id AND COALESCE(r.status, 'going') = 'going') AS rsvp_count
       FROM events
       JOIN users ON users.id = events.creator_id
       ORDER BY events.created_at DESC
@@ -162,7 +163,7 @@ router.get('/dashboard/superadmin', requireRole('superadmin'), async (req, res) 
       `SELECT
         (SELECT COUNT(*) FROM users) AS users,
         (SELECT COUNT(*) FROM events) AS events,
-        (SELECT COUNT(*) FROM rsvps) AS rsvps,
+        (SELECT COUNT(*) FROM rsvps WHERE COALESCE(status, 'going') = 'going') AS rsvps,
         (SELECT COUNT(*) FROM users WHERE role = 'admin') AS admins,
         (SELECT COUNT(*) FROM users WHERE role = 'superadmin') AS superadmins`
     );
@@ -175,7 +176,7 @@ router.get('/dashboard/superadmin', requireRole('superadmin'), async (req, res) 
         events.location,
         events.start_time,
         users.name AS host_name,
-        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id) AS rsvp_count
+        (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = events.id AND COALESCE(r.status, 'going') = 'going') AS rsvp_count
       FROM events
       JOIN users ON users.id = events.creator_id
       ORDER BY events.created_at DESC

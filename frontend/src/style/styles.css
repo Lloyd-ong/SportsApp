@@ -368,6 +368,15 @@ body:has(.auth-modal__backdrop) .footer {
   background: rgba(37, 99, 235, 0.08);
 }
 
+.btn--danger {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+.btn--danger:hover {
+  background: #991b1b;
+}
+
 .nav .btn--ghost {
   border-color: rgba(229, 231, 235, 0.35);
   color: #e5e7eb;
@@ -1500,6 +1509,7 @@ body:has(.auth-modal__backdrop) .footer {
   border: 1px solid var(--border);
   background: #f1f5f9;
   height: 320px;
+  position: relative;
 }
 
 .event-detail__image--upload {

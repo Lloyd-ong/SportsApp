@@ -182,6 +182,22 @@ export function postEventMessage(eventId, message) {
   });
 }
 
+export function getEventMembers(eventId) {
+  return request(`/api/events/${eventId}/members`);
+}
+
+export function kickEventMember(eventId, userId) {
+  return request(`/api/events/${eventId}/members/${userId}/kick`, {
+    method: 'POST'
+  });
+}
+
+export function banEventMember(eventId, userId) {
+  return request(`/api/events/${eventId}/members/${userId}/ban`, {
+    method: 'POST'
+  });
+}
+
 export function getCommunities() {
   return request('/api/communities');
 }
@@ -244,6 +260,29 @@ export function leaveCommunity(communityId) {
 
 export function getCommunityRequests(communityId) {
   return request(`/api/communities/${communityId}/requests`);
+}
+
+export function getCommunityMembers(communityId) {
+  return request(`/api/communities/${communityId}/members`);
+}
+
+export function kickCommunityMember(communityId, userId) {
+  return request(`/api/communities/${communityId}/members/${userId}/kick`, {
+    method: 'POST'
+  });
+}
+
+export function banCommunityMember(communityId, userId) {
+  return request(`/api/communities/${communityId}/members/${userId}/ban`, {
+    method: 'POST'
+  });
+}
+
+export function updateCommunityMemberRole(communityId, userId, role) {
+  return request(`/api/communities/${communityId}/members/${userId}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role })
+  });
 }
 
 export function approveCommunityRequest(communityId, userId) {
