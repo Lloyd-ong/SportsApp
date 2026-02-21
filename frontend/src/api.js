@@ -152,6 +152,14 @@ export function getUserDashboard() {
   return request('/api/dashboard/user');
 }
 
+export function getUserRsvpHistory(limit = 120) {
+  const params = new URLSearchParams();
+  if (limit) {
+    params.set('limit', String(limit));
+  }
+  return request(`/api/dashboard/user/rsvp-history?${params.toString()}`);
+}
+
 export function getAdminDashboard() {
   return request('/api/dashboard/admin');
 }

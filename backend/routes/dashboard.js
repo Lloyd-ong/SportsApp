@@ -114,6 +114,38 @@ router.get('/dashboard/user', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/dashboard/user/rsvp-history', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 120, 1), 500);
+    const [rows] = await db.execute(
+      `SELECT
+        events.id,
+        events.title,
+        events.sport,
+        events.location,
+        events.start_time,
+        events.end_time,
+        events.created_at,
+        users.id AS host_id,
+        users.name AS host_name,
+        rsvps.created_at AS rsvped_at
+      FROM rsvps
+      JOIN events ON events.id = rsvps.event_id
+      JOIN users ON users.id = events.creator_id
+      WHERE rsvps.user_id = ?
+        AND COALESCE(rsvps.status, 'going') = 'going'
+      ORDER BY rsvps.created_at DESC
+      LIMIT ${limit}`,
+      [userId]
+    );
+
+    return res.json({ events: rows });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to load RSVP history' });
+  }
+});
+
 router.get('/dashboard/admin', requireRole(['admin', 'superadmin']), async (req, res) => {
   try {
     const [[stats]] = await db.execute(

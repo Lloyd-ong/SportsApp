@@ -17,6 +17,7 @@ import {
   getMe,
   getSuperadminDashboard,
   getUserDashboard,
+  getUserRsvpHistory,
   loginUser,
   logout,
   createCommunity,
@@ -159,6 +160,8 @@ function App() {
   if (import.meta.env.DEV) {
     console.log('App mounted');
   }
+  const capitalizeWords = (value) =>
+    String(value || '').replace(/\b([a-z])/g, (match) => match.toUpperCase());
   const stripLocationLabel = (value) =>
     value
       ? value.replace(/\s*\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)\s*$/, '')
@@ -868,6 +871,9 @@ function App() {
     const [interestSearch, setInterestSearch] = useState('');
     const [saving, setSaving] = useState(false);
     const [profileError, setProfileError] = useState('');
+    const [rsvpHistory, setRsvpHistory] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyError, setHistoryError] = useState('');
 
     useEffect(() => {
       if (typeof window === 'undefined') {
@@ -897,6 +903,34 @@ function App() {
         confirm_password: ''
       });
     }, [user]);
+
+    useEffect(() => {
+      if (!user || activeSection !== 'rsvp-history') {
+        return;
+      }
+      let active = true;
+      setHistoryLoading(true);
+      setHistoryError('');
+      getUserRsvpHistory(300)
+        .then((data) => {
+          if (active) {
+            setRsvpHistory(data.events || []);
+          }
+        })
+        .catch((err) => {
+          if (active) {
+            setHistoryError(err.message);
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setHistoryLoading(false);
+          }
+        });
+      return () => {
+        active = false;
+      };
+    }, [activeSection, user]);
 
     const interestsArray = Array.isArray(form.interests)
       ? form.interests
@@ -1034,6 +1068,13 @@ function App() {
               onClick={() => setActiveSection('interests')}
             >
               Interests
+            </button>
+            <button
+              type="button"
+              className={`profile-nav__item ${activeSection === 'rsvp-history' ? 'profile-nav__item--active' : ''}`}
+              onClick={() => setActiveSection('rsvp-history')}
+            >
+              RSVP history
             </button>
           </aside>
 
@@ -1336,12 +1377,53 @@ function App() {
               </div>
             ) : null}
 
-            <div className="profile-actions">
-              <button type="submit" className="btn btn--primary" disabled={saving}>
-                {saving ? 'Saving...' : 'Save changes'}
-              </button>
-              {profileError ? <div className="alert alert--error">{profileError}</div> : null}
-            </div>
+            {activeSection === 'rsvp-history' ? (
+              <div className="profile-section">
+                <h3>RSVP history</h3>
+                <p>All events you have RSVP&apos;d to.</p>
+                {historyLoading ? <div className="loading">Loading RSVP history...</div> : null}
+                {historyError ? <div className="alert alert--error">{historyError}</div> : null}
+                {!historyLoading && !historyError ? (
+                  rsvpHistory.length ? (
+                    <div className="profile-history-list">
+                      {rsvpHistory.map((item) => {
+                        const startLabel = item.start_time
+                          ? new Date(item.start_time).toLocaleString()
+                          : '';
+                        return (
+                          <button
+                            key={`${item.id}-${item.rsvped_at || item.start_time || item.title}`}
+                            type="button"
+                            className="profile-history-item"
+                            onClick={() => navigate(`/events/${item.id}`)}
+                          >
+                            <div className="profile-history-item__main">
+                              <strong>{item.title}</strong>
+                              <span>{item.sport || 'Event'}</span>
+                            </div>
+                            <div className="profile-history-item__meta">
+                              <span>{stripLocationLabel(item.location) || 'No location'}</span>
+                              <span>{startLabel}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="chat__empty">No RSVP history yet.</div>
+                  )
+                ) : null}
+              </div>
+            ) : null}
+
+            {activeSection !== 'rsvp-history' ? (
+              <div className="profile-actions">
+                <button type="submit" className="btn btn--primary" disabled={saving}>
+                  {saving ? 'Saving...' : 'Save changes'}
+                </button>
+                {profileError ? <div className="alert alert--error">{profileError}</div> : null}
+              </div>
+            ) : null}
           </div>
         </form>
       </section>
@@ -4232,7 +4314,7 @@ function App() {
                   type="text"
                   value={communityForm.name}
                   onChange={(event) =>
-                    setCommunityForm((prev) => ({ ...prev, name: event.target.value }))
+                    setCommunityForm((prev) => ({ ...prev, name: capitalizeWords(event.target.value) }))
                   }
                   placeholder="Downtown Ballers"
                   required
@@ -4244,7 +4326,7 @@ function App() {
                   type="text"
                   value={communityForm.sport}
                   onChange={(event) =>
-                    setCommunityForm((prev) => ({ ...prev, sport: event.target.value }))
+                    setCommunityForm((prev) => ({ ...prev, sport: capitalizeWords(event.target.value) }))
                   }
                   placeholder="Basketball"
                 />
@@ -4255,7 +4337,7 @@ function App() {
                   type="text"
                   value={communityForm.region}
                   onChange={(event) =>
-                    setCommunityForm((prev) => ({ ...prev, region: event.target.value }))
+                    setCommunityForm((prev) => ({ ...prev, region: capitalizeWords(event.target.value) }))
                   }
                   placeholder="Downtown"
                 />
@@ -4291,7 +4373,7 @@ function App() {
                   rows="3"
                   value={communityForm.description}
                   onChange={(event) =>
-                    setCommunityForm((prev) => ({ ...prev, description: event.target.value }))
+                    setCommunityForm((prev) => ({ ...prev, description: capitalizeWords(event.target.value) }))
                   }
                   placeholder="Who this community is for and what you do."
                 />

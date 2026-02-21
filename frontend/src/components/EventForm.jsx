@@ -14,6 +14,9 @@ const initialForm = {
   capacity: ''
 };
 
+const capitalizeWords = (value) =>
+  String(value || '').replace(/\b([a-z])/g, (match) => match.toUpperCase());
+
 function EventForm({ onCreate, disabled }) {
   const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
@@ -23,8 +26,9 @@ function EventForm({ onCreate, disabled }) {
   const [locationOptions, setLocationOptions] = useState([]);
   const [locationLoading, setLocationLoading] = useState(false);
 
-  const handleChange = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+  const handleChange = (field, value, options = {}) => {
+    const nextValue = options.capitalize ? capitalizeWords(value) : value;
+    setForm((prev) => ({ ...prev, [field]: nextValue }));
   };
 
   useEffect(() => {
@@ -132,7 +136,7 @@ function EventForm({ onCreate, disabled }) {
           <input
             type="text"
             value={form.title}
-            onChange={(event) => handleChange('title', event.target.value)}
+            onChange={(event) => handleChange('title', event.target.value, { capitalize: true })}
             placeholder="Sunday football run"
             disabled={disabled || saving}
           />
@@ -142,7 +146,7 @@ function EventForm({ onCreate, disabled }) {
           <input
             type="text"
             value={form.sport}
-            onChange={(event) => handleChange('sport', event.target.value)}
+            onChange={(event) => handleChange('sport', event.target.value, { capitalize: true })}
             placeholder="Football, Basketball, Tennis"
             disabled={disabled || saving}
           />
@@ -153,7 +157,7 @@ function EventForm({ onCreate, disabled }) {
         <textarea
           rows="3"
           value={form.description}
-          onChange={(event) => handleChange('description', event.target.value)}
+          onChange={(event) => handleChange('description', event.target.value, { capitalize: true })}
           placeholder="What should people know before showing up?"
           disabled={disabled || saving}
         />
@@ -210,7 +214,7 @@ function EventForm({ onCreate, disabled }) {
           <input
             type="text"
             value={form.location}
-            onChange={(event) => handleChange('location', event.target.value)}
+            onChange={(event) => handleChange('location', event.target.value, { capitalize: true })}
             placeholder="Arena Court, Downtown"
             disabled={disabled || saving}
             list={locationDatalistId}
