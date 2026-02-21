@@ -15,6 +15,7 @@ const onemapRouter = require('./routes/onemap');
 const placesRouter = require('./routes/places');
 const messagesRouter = require('./routes/messages');
 const optionalAuth = require('./middleware/optionalAuth');
+const { ensureSportsCatalogTable } = require('./utils/sportsCatalog');
 const db = require('./db');
 
 const app = express();
@@ -121,6 +122,7 @@ app.use((err, req, res, next) => {
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 const updatePublicStats = async () => {
+  await ensureSportsCatalogTable();
   const [[userCount]] = await db.execute('SELECT COUNT(*) AS count FROM users');
   const [[eventCount]] = await db.execute(
     `SELECT COUNT(*) AS count
@@ -129,11 +131,13 @@ const updatePublicStats = async () => {
        AND start_time < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'`
   );
   const [[sportCount]] = await db.execute(
-    `SELECT COUNT(DISTINCT sport) AS count
+    `SELECT COUNT(*) AS count
      FROM (
-       SELECT sport FROM events
+       SELECT LOWER(TRIM(sport)) AS sport FROM events
        UNION
-       SELECT sport FROM communities
+       SELECT LOWER(TRIM(sport)) AS sport FROM communities
+       UNION
+       SELECT LOWER(TRIM(name)) AS sport FROM sports_catalog WHERE verified = TRUE
      ) AS sports
      WHERE sport IS NOT NULL AND sport <> ''`
   );

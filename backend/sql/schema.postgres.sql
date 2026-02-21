@@ -22,6 +22,26 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+  ADD COLUMN IF NOT EXISTS interests VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS location VARCHAR(140),
+  ADD COLUMN IF NOT EXISTS bio TEXT,
+  ADD COLUMN IF NOT EXISTS language VARCHAR(40),
+  ADD COLUMN IF NOT EXISTS timezone VARCHAR(40),
+  ADD COLUMN IF NOT EXISTS instagram VARCHAR(80),
+  ADD COLUMN IF NOT EXISTS twitter VARCHAR(80),
+  ADD COLUMN IF NOT EXISTS facebook VARCHAR(80),
+  ADD COLUMN IF NOT EXISTS linkedin VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS privacy_profile VARCHAR(20) NOT NULL DEFAULT 'public',
+  ADD COLUMN IF NOT EXISTS privacy_contact VARCHAR(20) NOT NULL DEFAULT 'members',
+  ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user',
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE users
+  ALTER COLUMN avatar_url TYPE TEXT;
+
 CREATE TABLE IF NOT EXISTS events (
   id SERIAL PRIMARY KEY,
   creator_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -37,10 +57,24 @@ CREATE TABLE IF NOT EXISTS events (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_events_title ON events(title);
-CREATE INDEX IF NOT EXISTS idx_events_sport ON events(sport);
-CREATE INDEX IF NOT EXISTS idx_events_location ON events(location);
-CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_time);
+ALTER TABLE events
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS sport VARCHAR(80),
+  ADD COLUMN IF NOT EXISTS location VARCHAR(140),
+  ADD COLUMN IF NOT EXISTS image_url TEXT,
+  ADD COLUMN IF NOT EXISTS start_time TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS end_time TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS capacity INT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE events
+  ALTER COLUMN image_url TYPE TEXT;
+
+ALTER TABLE events
+  ALTER COLUMN sport SET NOT NULL,
+  ALTER COLUMN location SET NOT NULL,
+  ALTER COLUMN start_time SET NOT NULL;
 
 CREATE TABLE IF NOT EXISTS rsvps (
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -49,17 +83,6 @@ CREATE TABLE IF NOT EXISTS rsvps (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id, event_id)
 );
-
-CREATE TABLE IF NOT EXISTS event_messages (
-  id SERIAL PRIMARY KEY,
-  event_id INT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  message TEXT NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_event_messages_event ON event_messages(event_id);
-CREATE INDEX IF NOT EXISTS idx_event_messages_created ON event_messages(created_at);
 
 CREATE TABLE IF NOT EXISTS communities (
   id SERIAL PRIMARY KEY,
@@ -74,9 +97,25 @@ CREATE TABLE IF NOT EXISTS communities (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_communities_name ON communities(name);
-CREATE INDEX IF NOT EXISTS idx_communities_sport ON communities(sport);
-CREATE INDEX IF NOT EXISTS idx_communities_region ON communities(region);
+ALTER TABLE communities
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS sport VARCHAR(80),
+  ADD COLUMN IF NOT EXISTS region VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS image_url TEXT,
+  ADD COLUMN IF NOT EXISTS max_members INT,
+  ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'public',
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE communities
+  ALTER COLUMN image_url TYPE TEXT;
+
+CREATE TABLE IF NOT EXISTS event_messages (
+  id SERIAL PRIMARY KEY,
+  event_id INT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE IF NOT EXISTS community_messages (
   id SERIAL PRIMARY KEY,
@@ -85,9 +124,6 @@ CREATE TABLE IF NOT EXISTS community_messages (
   message TEXT NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX IF NOT EXISTS idx_community_messages_community ON community_messages(community_id);
-CREATE INDEX IF NOT EXISTS idx_community_messages_created ON community_messages(created_at);
 
 CREATE TABLE IF NOT EXISTS community_members (
   community_id INT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
@@ -100,8 +136,6 @@ CREATE TABLE IF NOT EXISTS community_members (
   PRIMARY KEY (community_id, user_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_community_members_user ON community_members(user_id);
-
 CREATE TABLE IF NOT EXISTS private_messages (
   id SERIAL PRIMARY KEY,
   sender_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -110,10 +144,6 @@ CREATE TABLE IF NOT EXISTS private_messages (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   read_at TIMESTAMP NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_private_messages_recipient ON private_messages(recipient_id);
-CREATE INDEX IF NOT EXISTS idx_private_messages_sender ON private_messages(sender_id);
-CREATE INDEX IF NOT EXISTS idx_private_messages_created ON private_messages(created_at);
 
 CREATE TABLE IF NOT EXISTS community_invites (
   id SERIAL PRIMARY KEY,
@@ -126,9 +156,6 @@ CREATE TABLE IF NOT EXISTS community_invites (
   UNIQUE (community_id, email)
 );
 
-CREATE INDEX IF NOT EXISTS idx_invites_email ON community_invites(email);
-CREATE INDEX IF NOT EXISTS idx_invites_user ON community_invites(invited_user_id);
-
 CREATE TABLE IF NOT EXISTS password_resets (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -138,8 +165,15 @@ CREATE TABLE IF NOT EXISTS password_resets (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_resets_user ON password_resets(user_id);
-CREATE INDEX IF NOT EXISTS idx_resets_expires ON password_resets(expires_at);
+CREATE TABLE IF NOT EXISTS sports_catalog (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(80) NOT NULL,
+  normalized_name VARCHAR(80) NOT NULL UNIQUE,
+  verified BOOLEAN NOT NULL DEFAULT TRUE,
+  source VARCHAR(40) NOT NULL DEFAULT 'wikipedia',
+  evidence TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE IF NOT EXISTS public_stats (
   id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -148,6 +182,31 @@ CREATE TABLE IF NOT EXISTS public_stats (
   sports INT NOT NULL DEFAULT 0,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+INSERT INTO public_stats (id, users, events, sports)
+VALUES (1, 0, 0, 0)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE INDEX IF NOT EXISTS idx_events_title ON events(title);
+CREATE INDEX IF NOT EXISTS idx_events_sport ON events(sport);
+CREATE INDEX IF NOT EXISTS idx_events_location ON events(location);
+CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_time);
+CREATE INDEX IF NOT EXISTS idx_event_messages_event ON event_messages(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_messages_created ON event_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_communities_name ON communities(name);
+CREATE INDEX IF NOT EXISTS idx_communities_sport ON communities(sport);
+CREATE INDEX IF NOT EXISTS idx_communities_region ON communities(region);
+CREATE INDEX IF NOT EXISTS idx_community_messages_community ON community_messages(community_id);
+CREATE INDEX IF NOT EXISTS idx_community_messages_created ON community_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_community_members_user ON community_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_private_messages_recipient ON private_messages(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_private_messages_sender ON private_messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_private_messages_created ON private_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_invites_email ON community_invites(email);
+CREATE INDEX IF NOT EXISTS idx_invites_user ON community_invites(invited_user_id);
+CREATE INDEX IF NOT EXISTS idx_resets_user ON password_resets(user_id);
+CREATE INDEX IF NOT EXISTS idx_resets_expires ON password_resets(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sports_catalog_normalized ON sports_catalog(normalized_name);
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER

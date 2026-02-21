@@ -2,17 +2,13 @@ const express = require('express');
 const db = require('../db');
 const requireAuth = require('../middleware/requireAuth');
 const requireRole = require('../middleware/requireRole');
+const { ensureSportsCatalogTable } = require('../utils/sportsCatalog');
 
 const router = express.Router();
 
 router.get('/stats', async (req, res) => {
   try {
-    const [rows] = await db.execute(
-      'SELECT users, events, sports, updated_at FROM public_stats WHERE id = 1'
-    );
-    if (rows.length) {
-      return res.json({ stats: rows[0] });
-    }
+    await ensureSportsCatalogTable();
 
     const [[userCount]] = await db.execute('SELECT COUNT(*) AS count FROM users');
     const [[eventCount]] = await db.execute(
@@ -22,11 +18,13 @@ router.get('/stats', async (req, res) => {
          AND start_time < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'`
     );
     const [[sportCount]] = await db.execute(
-      `SELECT COUNT(DISTINCT sport) AS count
+      `SELECT COUNT(*) AS count
        FROM (
-         SELECT sport FROM events
+         SELECT LOWER(TRIM(sport)) AS sport FROM events
          UNION
-         SELECT sport FROM communities
+         SELECT LOWER(TRIM(sport)) AS sport FROM communities
+         UNION
+         SELECT LOWER(TRIM(name)) AS sport FROM sports_catalog WHERE verified = TRUE
        ) AS sports
        WHERE sport IS NOT NULL AND sport <> ''`
     );

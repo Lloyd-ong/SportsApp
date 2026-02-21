@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const requireAuth = require('../middleware/requireAuth');
 const { stripLocationLabel, getPlacePhotoReference, buildPhotoProxyUrl } = require('../utils/places');
+const { registerSportIfVerified } = require('../utils/sportsCatalog');
 
 const router = express.Router();
 
@@ -239,6 +240,12 @@ router.post('/events', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    try {
+      await registerSportIfVerified(sport);
+    } catch (err) {
+      console.warn('Sport verification skipped for event create', err.message);
+    }
+
     if (!imageUrl) {
       try {
         const locationLabel = stripLocationLabel(location);
@@ -419,6 +426,12 @@ router.patch('/events/:id', requireAuth, async (req, res) => {
 
     if (!title || !sport || !location || !startTime) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    try {
+      await registerSportIfVerified(sport);
+    } catch (err) {
+      console.warn('Sport verification skipped for event update', err.message);
     }
 
     if (!imageUrl) {

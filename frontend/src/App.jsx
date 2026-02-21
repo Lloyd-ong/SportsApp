@@ -3488,7 +3488,7 @@ function App() {
                 </div>
                 <div>
                   <h3><CountUp className="stat-number" end={usersTotal} /></h3>
-                  <p>Athletes signed up</p>
+                  <p>Users signed up</p>
                 </div>
               </div>
             </div>

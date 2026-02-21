@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const requireAuth = require('../middleware/requireAuth');
 const { getPlacePhotoReference, buildPhotoProxyUrl } = require('../utils/places');
+const { registerSportIfVerified } = require('../utils/sportsCatalog');
 
 const router = express.Router();
 
@@ -184,6 +185,14 @@ router.post('/communities', requireAuth, async (req, res) => {
 
     if (!name) {
       return res.status(400).json({ error: 'Community name is required' });
+    }
+
+    if (sport) {
+      try {
+        await registerSportIfVerified(sport);
+      } catch (err) {
+        console.warn('Sport verification skipped for community create', err.message);
+      }
     }
 
     if (!imageUrl && sport) {
@@ -631,6 +640,14 @@ router.patch('/communities/:id', requireAuth, async (req, res) => {
 
     if (!name) {
       return res.status(400).json({ error: 'Community name is required' });
+    }
+
+    if (sport) {
+      try {
+        await registerSportIfVerified(sport);
+      } catch (err) {
+        console.warn('Sport verification skipped for community update', err.message);
+      }
     }
 
     if (!imageUrl && sport) {
