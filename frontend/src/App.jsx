@@ -929,7 +929,15 @@ function App() {
       const stored = window.sessionStorage.getItem('profileActiveSection');
       return stored || 'edit';
     };
+    const readIsCompactProfile = () => {
+      if (typeof window === 'undefined') {
+        return false;
+      }
+      return window.matchMedia('(max-width: 1024px)').matches;
+    };
     const [activeSection, setActiveSection] = useState(readActiveSection);
+    const [isCompactProfile, setIsCompactProfile] = useState(readIsCompactProfile);
+    const [profileMenuOpen, setProfileMenuOpen] = useState(() => !readIsCompactProfile());
     const [imageError, setImageError] = useState('');
     const [interestSearch, setInterestSearch] = useState('');
     const [saving, setSaving] = useState(false);
@@ -944,6 +952,48 @@ function App() {
       }
       window.sessionStorage.setItem('profileActiveSection', activeSection);
     }, [activeSection]);
+
+    useEffect(() => {
+      if (typeof window === 'undefined') {
+        return undefined;
+      }
+
+      const mediaQuery = window.matchMedia('(max-width: 1024px)');
+      const applyLayout = (isCompact) => {
+        setIsCompactProfile(isCompact);
+        setProfileMenuOpen(!isCompact);
+      };
+
+      applyLayout(mediaQuery.matches);
+
+      const handleMediaChange = (event) => {
+        applyLayout(event.matches);
+      };
+
+      if (typeof mediaQuery.addEventListener === 'function') {
+        mediaQuery.addEventListener('change', handleMediaChange);
+        return () => mediaQuery.removeEventListener('change', handleMediaChange);
+      }
+
+      mediaQuery.addListener(handleMediaChange);
+      return () => mediaQuery.removeListener(handleMediaChange);
+    }, []);
+
+    const SECTION_LABELS = {
+      edit: 'Edit profile',
+      account: 'Account management',
+      privacy: 'Privacy',
+      social: 'Social media',
+      interests: 'Interests',
+      'rsvp-history': 'RSVP history'
+    };
+
+    const handleSectionChange = (section) => {
+      setActiveSection(section);
+      if (isCompactProfile) {
+        setProfileMenuOpen(false);
+      }
+    };
 
     useEffect(() => {
       setForm({
@@ -1096,49 +1146,71 @@ function App() {
           </div>
         </div>
         <form className="profile-form profile-form--layout" onSubmit={handleSubmit}>
-          <aside className="profile-sidebar">
+          <aside className={`profile-sidebar ${isCompactProfile ? 'profile-sidebar--compact' : ''}`}>
             <button
               type="button"
-              className={`profile-nav__item ${activeSection === 'edit' ? 'profile-nav__item--active' : ''}`}
-              onClick={() => setActiveSection('edit')}
+              className="profile-sidebar__toggle"
+              aria-expanded={!isCompactProfile || profileMenuOpen}
+              aria-controls="profile-sidebar-nav"
+              onClick={() => setProfileMenuOpen((open) => !open)}
             >
-              Edit profile
+              <span className="profile-sidebar__toggle-label">
+                {SECTION_LABELS[activeSection] || 'Profile menu'}
+              </span>
+              <span
+                className={`profile-sidebar__toggle-icon ${profileMenuOpen ? 'profile-sidebar__toggle-icon--open' : ''}`}
+                aria-hidden="true"
+              >
+                ▾
+              </span>
             </button>
-            <button
-              type="button"
-              className={`profile-nav__item ${activeSection === 'account' ? 'profile-nav__item--active' : ''}`}
-              onClick={() => setActiveSection('account')}
+            <div
+              id="profile-sidebar-nav"
+              className={`profile-sidebar__nav ${!isCompactProfile || profileMenuOpen ? 'profile-sidebar__nav--open' : ''}`}
             >
-              Account management
-            </button>
-            <button
-              type="button"
-              className={`profile-nav__item ${activeSection === 'privacy' ? 'profile-nav__item--active' : ''}`}
-              onClick={() => setActiveSection('privacy')}
-            >
-              Privacy
-            </button>
-            <button
-              type="button"
-              className={`profile-nav__item ${activeSection === 'social' ? 'profile-nav__item--active' : ''}`}
-              onClick={() => setActiveSection('social')}
-            >
-              Social media
-            </button>
-            <button
-              type="button"
-              className={`profile-nav__item ${activeSection === 'interests' ? 'profile-nav__item--active' : ''}`}
-              onClick={() => setActiveSection('interests')}
-            >
-              Interests
-            </button>
-            <button
-              type="button"
-              className={`profile-nav__item ${activeSection === 'rsvp-history' ? 'profile-nav__item--active' : ''}`}
-              onClick={() => setActiveSection('rsvp-history')}
-            >
-              RSVP history
-            </button>
+              <button
+                type="button"
+                className={`profile-nav__item ${activeSection === 'edit' ? 'profile-nav__item--active' : ''}`}
+                onClick={() => handleSectionChange('edit')}
+              >
+                Edit profile
+              </button>
+              <button
+                type="button"
+                className={`profile-nav__item ${activeSection === 'account' ? 'profile-nav__item--active' : ''}`}
+                onClick={() => handleSectionChange('account')}
+              >
+                Account management
+              </button>
+              <button
+                type="button"
+                className={`profile-nav__item ${activeSection === 'privacy' ? 'profile-nav__item--active' : ''}`}
+                onClick={() => handleSectionChange('privacy')}
+              >
+                Privacy
+              </button>
+              <button
+                type="button"
+                className={`profile-nav__item ${activeSection === 'social' ? 'profile-nav__item--active' : ''}`}
+                onClick={() => handleSectionChange('social')}
+              >
+                Social media
+              </button>
+              <button
+                type="button"
+                className={`profile-nav__item ${activeSection === 'interests' ? 'profile-nav__item--active' : ''}`}
+                onClick={() => handleSectionChange('interests')}
+              >
+                Interests
+              </button>
+              <button
+                type="button"
+                className={`profile-nav__item ${activeSection === 'rsvp-history' ? 'profile-nav__item--active' : ''}`}
+                onClick={() => handleSectionChange('rsvp-history')}
+              >
+                RSVP history
+              </button>
+            </div>
           </aside>
 
           <div className="profile-content">

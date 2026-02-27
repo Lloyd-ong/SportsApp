@@ -2030,6 +2030,45 @@ body:has(.auth-modal__backdrop) .footer {
   gap: 8px;
 }
 
+.profile-sidebar__toggle {
+  display: none;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  color: var(--ink);
+  font-weight: 600;
+  padding: 10px 12px;
+  text-align: left;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.profile-sidebar__toggle-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-sidebar__toggle-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.profile-sidebar__toggle-icon--open {
+  transform: rotate(180deg);
+}
+
+.profile-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .profile-nav__item {
   background: transparent;
   border: 1px solid transparent;
@@ -2898,6 +2937,20 @@ gmp-place-autocomplete.gmp-autocomplete__input {
     border-bottom: 1px solid var(--border);
     padding-right: 0;
     padding-bottom: 16px;
+    min-width: 0;
+  }
+
+  .profile-sidebar__toggle {
+    display: inline-flex;
+  }
+
+  .profile-sidebar__nav {
+    display: none;
+    margin-top: 8px;
+  }
+
+  .profile-sidebar__nav--open {
+    display: flex;
   }
 
   .profile-history-item {
@@ -3181,7 +3234,7 @@ gmp-place-autocomplete.gmp-autocomplete__input {
 }
 
 /* Large / Medium / Small responsive refinements */
-@media (min-width: 861px) and (max-width: 1200px) {
+@media (min-width: 861px) and (max-width: 1280px) {
   .nav__inner {
     flex-wrap: wrap;
     row-gap: 10px;
@@ -3191,22 +3244,36 @@ gmp-place-autocomplete.gmp-autocomplete__input {
     flex: 1 1 auto;
     min-width: 0;
     justify-content: flex-end;
-    gap: 12px;
+    gap: 10px;
   }
 
   .nav__links {
-    flex-wrap: wrap;
-    gap: 6px;
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
 
   .nav__actions {
     margin-left: auto;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: nowrap;
+    flex-shrink: 0;
   }
 
   .user-pill {
     flex-wrap: nowrap;
+    gap: 8px;
+    padding: 6px 10px;
+  }
+
+  .user-pill__name {
+    max-width: 120px;
+  }
+
+  .nav__link {
+    padding: 7px 8px;
+    font-size: 0.88rem;
   }
 
   .nav__search {
