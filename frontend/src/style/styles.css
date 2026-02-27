@@ -2458,17 +2458,16 @@ gmp-place-autocomplete.gmp-autocomplete__input {
 }
 
 .dash-stats {
-  display: flex;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 16px;
 }
 
 .dash-stats--wide {
-  flex-wrap: nowrap;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .dash-stats .stat-card {
-  flex: 1 1 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -2513,6 +2512,7 @@ gmp-place-autocomplete.gmp-autocomplete__input {
   letter-spacing: 0.12em;
   color: var(--muted);
   margin-bottom: 6px;
+  overflow-wrap: anywhere;
 }
 
 .stat-value {
@@ -3370,6 +3370,17 @@ gmp-place-autocomplete.gmp-autocomplete__input {
   .btn {
     height: 42px;
     padding: 0 14px;
+  }
+
+  .stat-label {
+    letter-spacing: 0.08em;
+    font-size: 0.78rem;
+  }
+
+  .dash-stats,
+  .dash-stats--wide {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .reset-form .btn--primary {
