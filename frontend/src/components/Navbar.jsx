@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import SearchBar from './SearchBar.jsx';
 
@@ -15,8 +15,38 @@ function Navbar({
   searchPlaceholder
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
   const initials = user && user.name ? user.name.split(' ').map((part) => part[0]).join('').slice(0, 2) : '';
-  const closeMenu = () => setMenuOpen(false);
+  const closeMenu = () => {
+    setMenuOpen(false);
+    setUserMenuOpen(false);
+  };
+
+  useEffect(() => {
+    if (!userMenuOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setUserMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setUserMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [userMenuOpen]);
 
   return (
     <header className="nav">
@@ -121,16 +151,40 @@ function Navbar({
                     <div className="user-pill__name">{user.name}</div>
                   </div>
                 </NavLink>
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={() => {
-                    closeMenu();
-                    onLogout();
-                  }}
-                >
-                  Log out
-                </button>
+                <div className="user-pill__menu" ref={userMenuRef}>
+                  <button
+                    type="button"
+                    className="user-pill__menu-toggle"
+                    aria-label="Open user menu"
+                    aria-expanded={userMenuOpen}
+                    onClick={() => setUserMenuOpen((open) => !open)}
+                  >
+                    <span className="user-pill__menu-bar" />
+                    <span className="user-pill__menu-bar" />
+                    <span className="user-pill__menu-bar" />
+                  </button>
+                  {userMenuOpen ? (
+                    <div className="user-pill__menu-popover">
+                      <NavLink
+                        to="/profile"
+                        className="user-pill__menu-item"
+                        onClick={closeMenu}
+                      >
+                        Profile
+                      </NavLink>
+                      <button
+                        type="button"
+                        className="user-pill__menu-item"
+                        onClick={() => {
+                          closeMenu();
+                          onLogout();
+                        }}
+                      >
+                        Log out
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             ) : (
               <>

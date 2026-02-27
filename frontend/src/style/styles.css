@@ -148,6 +148,9 @@ body:has(.auth-modal__backdrop) .footer {
 .nav__panel {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 20px;
 }
 
@@ -190,6 +193,8 @@ body:has(.auth-modal__backdrop) .footer {
   gap: 2px;
   text-decoration: none;
   color: inherit;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .nav__brand-main {
@@ -228,6 +233,7 @@ body:has(.auth-modal__backdrop) .footer {
 .nav__links {
   display: flex;
   align-items: center;
+  min-width: 0;
   gap: 8px;
   font-size: 0.95rem;
 }
@@ -298,6 +304,8 @@ body:has(.auth-modal__backdrop) .footer {
   border: 1px solid rgba(229, 231, 235, 0.2);
   padding: 8px 12px;
   border-radius: 999px;
+  position: relative;
+  min-width: 0;
 }
 
 .user-pill__link {
@@ -306,6 +314,7 @@ body:has(.auth-modal__backdrop) .footer {
   gap: 12px;
   text-decoration: none;
   color: inherit;
+  min-width: 0;
 }
 
 .user-pill__link:hover .user-pill__name {
@@ -333,11 +342,83 @@ body:has(.auth-modal__backdrop) .footer {
 .user-pill__name {
   font-weight: 600;
   color: #e5e7eb;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .user-pill__email {
   font-size: 0.75rem;
   color: rgba(229, 231, 235, 0.65);
+}
+
+.user-pill__menu {
+  position: relative;
+  margin-left: auto;
+}
+
+.user-pill__menu-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(229, 231, 235, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.user-pill__menu-toggle:hover,
+.user-pill__menu-toggle:focus-visible {
+  border-color: rgba(229, 231, 235, 0.6);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.user-pill__menu-bar {
+  width: 16px;
+  height: 2px;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.user-pill__menu-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 160px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(229, 231, 235, 0.3);
+  background: #111827;
+  box-shadow: 0 10px 26px rgba(17, 24, 39, 0.25);
+  display: grid;
+  gap: 4px;
+  z-index: 40;
+}
+
+.user-pill__menu-item {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #e5e7eb;
+  text-decoration: none;
+  text-align: left;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.user-pill__menu-item:hover,
+.user-pill__menu-item:focus-visible {
+  border-color: rgba(229, 231, 235, 0.3);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .btn {
@@ -2968,6 +3049,20 @@ gmp-place-autocomplete.gmp-autocomplete__input {
     border-radius: var(--radius);
   }
 
+  .user-pill__link {
+    flex: 1 1 auto;
+  }
+
+  .user-pill__name {
+    max-width: 120px;
+  }
+
+  .user-pill__menu-popover {
+    right: 0;
+    left: auto;
+    min-width: 140px;
+  }
+
   .user-pill .btn {
     align-self: stretch;
   }
@@ -3086,7 +3181,7 @@ gmp-place-autocomplete.gmp-autocomplete__input {
 }
 
 /* Large / Medium / Small responsive refinements */
-@media (min-width: 861px) and (max-width: 992px) {
+@media (min-width: 861px) and (max-width: 1200px) {
   .nav__inner {
     flex-wrap: wrap;
     row-gap: 10px;
@@ -3100,6 +3195,7 @@ gmp-place-autocomplete.gmp-autocomplete__input {
   }
 
   .nav__links {
+    flex-wrap: wrap;
     gap: 6px;
   }
 
