@@ -3,6 +3,7 @@ const db = require('../db');
 const requireAuth = require('../middleware/requireAuth');
 const { getPlacePhotoReference, buildPhotoProxyUrl } = require('../utils/places');
 const { registerSportIfVerified } = require('../utils/sportsCatalog');
+const { appendUserInterest } = require('../utils/userInterests');
 
 const router = express.Router();
 
@@ -187,9 +188,10 @@ router.post('/communities', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Community name is required' });
     }
 
+    let sportRegistration = null;
     if (sport) {
       try {
-        await registerSportIfVerified(sport);
+        sportRegistration = await registerSportIfVerified(sport);
       } catch (err) {
         console.warn('Sport verification skipped for community create', err.message);
       }
@@ -226,6 +228,14 @@ router.post('/communities', requireAuth, async (req, res) => {
       'INSERT INTO community_members (community_id, user_id, role, status, approved_by, approved_at) VALUES (?, ?, ?, ?, ?, NOW())',
       [result.insertId, req.user.id, 'owner', 'approved', req.user.id]
     );
+
+    if (sportRegistration && sportRegistration.ok) {
+      try {
+        await appendUserInterest(req.user.id, sport);
+      } catch (err) {
+        console.warn('Failed to append sport to user interests', err.message);
+      }
+    }
 
     const [rows] = await db.execute(
       `SELECT

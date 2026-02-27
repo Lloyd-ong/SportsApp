@@ -3,6 +3,7 @@ const db = require('../db');
 const requireAuth = require('../middleware/requireAuth');
 const { stripLocationLabel, getPlacePhotoReference, buildPhotoProxyUrl } = require('../utils/places');
 const { registerSportIfVerified } = require('../utils/sportsCatalog');
+const { appendUserInterest } = require('../utils/userInterests');
 
 const router = express.Router();
 
@@ -30,54 +31,6 @@ function normalizeDateOnly(value, boundary) {
     return null;
   }
   return `${trimmed} ${boundary === 'end' ? '23:59:59' : '00:00:00'}`;
-}
-
-function parseInterests(rawInterests) {
-  if (typeof rawInterests !== 'string' || !rawInterests.trim()) {
-    return [];
-  }
-  return rawInterests
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function mergeSportInterest(rawInterests, sport) {
-  const cleanSport = typeof sport === 'string' ? sport.trim() : '';
-  if (!cleanSport) {
-    return typeof rawInterests === 'string' ? rawInterests.trim() : '';
-  }
-
-  const values = parseInterests(rawInterests);
-  const existing = new Set(values.map((item) => item.toLowerCase()));
-  if (existing.has(cleanSport.toLowerCase())) {
-    return values.join(', ');
-  }
-
-  const next = [...values, cleanSport].join(', ');
-  // users.interests is VARCHAR(255) in the current schema.
-  if (next.length > 255) {
-    return values.join(', ');
-  }
-  return next;
-}
-
-async function addSportToUserInterests(userId, sport) {
-  if (!userId) {
-    return;
-  }
-  const [users] = await db.execute('SELECT interests FROM users WHERE id = ? LIMIT 1', [userId]);
-  if (!users.length) {
-    return;
-  }
-
-  const currentInterests = users[0].interests || '';
-  const nextInterests = mergeSportInterest(currentInterests, sport);
-  if (nextInterests === currentInterests) {
-    return;
-  }
-
-  await db.execute('UPDATE users SET interests = ? WHERE id = ?', [nextInterests || null, userId]);
 }
 
 function buildListQuery(filters, userId) {
@@ -332,7 +285,7 @@ router.post('/events', requireAuth, async (req, res) => {
 
     if (sportRegistration && sportRegistration.ok) {
       try {
-        await addSportToUserInterests(req.user.id, sport);
+        await appendUserInterest(req.user.id, sport);
       } catch (err) {
         console.warn('Failed to append sport to user interests', err.message);
       }

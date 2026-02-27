@@ -676,6 +676,20 @@ function App() {
       const data = await createCommunity(payload);
       setCommunities((prev) => [data.community, ...prev]);
       setNearbyCommunitiesData((prev) => [data.community, ...prev]);
+      const createdSport = typeof data?.community?.sport === 'string' ? data.community.sport.trim() : '';
+      if (createdSport) {
+        setUser((prev) => {
+          if (!prev) {
+            return prev;
+          }
+          const nextInterests = appendSportToInterestList(prev.interests, createdSport);
+          const currentInterests = typeof prev.interests === 'string' ? prev.interests : '';
+          if (nextInterests === currentInterests) {
+            return prev;
+          }
+          return { ...prev, interests: nextInterests };
+        });
+      }
       setCommunityForm({
         name: '',
         description: '',
