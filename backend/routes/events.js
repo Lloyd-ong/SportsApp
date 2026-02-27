@@ -32,6 +32,54 @@ function normalizeDateOnly(value, boundary) {
   return `${trimmed} ${boundary === 'end' ? '23:59:59' : '00:00:00'}`;
 }
 
+function parseInterests(rawInterests) {
+  if (typeof rawInterests !== 'string' || !rawInterests.trim()) {
+    return [];
+  }
+  return rawInterests
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function mergeSportInterest(rawInterests, sport) {
+  const cleanSport = typeof sport === 'string' ? sport.trim() : '';
+  if (!cleanSport) {
+    return typeof rawInterests === 'string' ? rawInterests.trim() : '';
+  }
+
+  const values = parseInterests(rawInterests);
+  const existing = new Set(values.map((item) => item.toLowerCase()));
+  if (existing.has(cleanSport.toLowerCase())) {
+    return values.join(', ');
+  }
+
+  const next = [...values, cleanSport].join(', ');
+  // users.interests is VARCHAR(255) in the current schema.
+  if (next.length > 255) {
+    return values.join(', ');
+  }
+  return next;
+}
+
+async function addSportToUserInterests(userId, sport) {
+  if (!userId) {
+    return;
+  }
+  const [users] = await db.execute('SELECT interests FROM users WHERE id = ? LIMIT 1', [userId]);
+  if (!users.length) {
+    return;
+  }
+
+  const currentInterests = users[0].interests || '';
+  const nextInterests = mergeSportInterest(currentInterests, sport);
+  if (nextInterests === currentInterests) {
+    return;
+  }
+
+  await db.execute('UPDATE users SET interests = ? WHERE id = ?', [nextInterests || null, userId]);
+}
+
 function buildListQuery(filters, userId) {
   const { q, upcomingOnly, limit, sport, region, startDate, endDate } = filters;
   const params = [];
@@ -240,8 +288,9 @@ router.post('/events', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    let sportRegistration = null;
     try {
-      await registerSportIfVerified(sport);
+      sportRegistration = await registerSportIfVerified(sport);
     } catch (err) {
       console.warn('Sport verification skipped for event create', err.message);
     }
@@ -280,6 +329,14 @@ router.post('/events', requireAuth, async (req, res) => {
       "INSERT INTO rsvps (user_id, event_id, status) VALUES (?, ?, 'going') ON CONFLICT (user_id, event_id) DO UPDATE SET status = 'going'",
       [req.user.id, result.insertId]
     );
+
+    if (sportRegistration && sportRegistration.ok) {
+      try {
+        await addSportToUserInterests(req.user.id, sport);
+      } catch (err) {
+        console.warn('Failed to append sport to user interests', err.message);
+      }
+    }
 
     const [rows] = await db.execute(
       `SELECT

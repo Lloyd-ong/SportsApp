@@ -162,6 +162,22 @@ function App() {
   }
   const capitalizeWords = (value) =>
     String(value || '').replace(/\b([a-z])/g, (match) => match.toUpperCase());
+  const parseInterestList = (value) =>
+    String(value || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  const appendSportToInterestList = (currentValue, sportValue) => {
+    const sport = String(sportValue || '').trim();
+    if (!sport) {
+      return typeof currentValue === 'string' ? currentValue : '';
+    }
+    const items = parseInterestList(currentValue);
+    if (items.some((item) => item.toLowerCase() === sport.toLowerCase())) {
+      return items.join(', ');
+    }
+    return [...items, sport].join(', ');
+  };
   const stripLocationLabel = (value) =>
     value
       ? value.replace(/\s*\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)\s*$/, '')
@@ -620,6 +636,20 @@ function App() {
     setNotice('');
     setError('');
     const result = await createEvent(payload);
+    const createdSport = typeof result?.event?.sport === 'string' ? result.event.sport.trim() : '';
+    if (createdSport) {
+      setUser((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const nextInterests = appendSportToInterestList(prev.interests, createdSport);
+        const currentInterests = typeof prev.interests === 'string' ? prev.interests : '';
+        if (nextInterests === currentInterests) {
+          return prev;
+        }
+        return { ...prev, interests: nextInterests };
+      });
+    }
     setNotice(`Created ${result.event.title}.`);
     await loadEvents({ query: query.trim() });
     if (user && user.role) {
@@ -839,7 +869,26 @@ function App() {
   };
 
   const ProfilePage = () => {
-    const INTEREST_OPTIONS = SPORT_OPTIONS;
+    const INTEREST_OPTIONS = useMemo(() => {
+      const unique = new Map();
+      const addInterest = (value) => {
+        const label = String(value || '').trim();
+        if (!label) {
+          return;
+        }
+        const key = label.toLowerCase();
+        if (!unique.has(key)) {
+          unique.set(key, label);
+        }
+      };
+
+      SPORT_OPTIONS.forEach(addInterest);
+      events.forEach((event) => addInterest(event.sport));
+      communities.forEach((community) => addInterest(community.sport));
+      parseInterestList(user?.interests).forEach(addInterest);
+
+      return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
+    }, [events, communities, user]);
     const [form, setForm] = useState({
       name: user?.name || '',
       email: user?.email || '',
